@@ -1,0 +1,27 @@
+# OpenClaw / workspace 排除
+.openclaw/
+.openclaw/tmp/
+
+# 编辑器
+.idea/
+.vscode/
+*.swp
+*.swo
+.DS_Store
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+.venv/
+venv/
+
+# Secrets（绝不入库）
+*credentials*
+*.token
+*.pat
+*.key
+*.secret
+.env
+.env.local
