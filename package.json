@@ -1,0 +1,12 @@
+{
+  "name": "aftersales-judge-decide",
+  "version": "0.1.0",
+  "private": true,
+  "description": "升级售后判责 SKILL — 本地开发工具链（lark-cli 本地安装，禁止 npm -g 全局装）",
+  "scripts": {
+    "lark": "lark-cli"
+  },
+  "devDependencies": {
+    "@larksuite/cli": "^1.0.85"
+  }
+}

@@ -1,0 +1,38 @@
+# OpenClaw / workspace 排除
+.openclaw/
+.openclaw/tmp/
+
+# 编辑器
+.idea/
+.vscode/
+*.swp
+*.swo
+.DS_Store
+
+# Claude Code 本地状态（plans / 会话产物，不入库）
+.claude/
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+.venv/
+venv/
+
+# Node（lark-cli 本地安装产物，禁止 npm -g）
+node_modules/
+package-lock.json
+
+# Secrets（绝不入库）
+*credentials*
+*.token
+*.pat
+*.key
+*.secret
+.env
+.env.local
+
+# 探针输出（运行时生成, gitignore）
+probes/
+probe-results-*.json

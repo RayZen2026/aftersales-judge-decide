@@ -1,0 +1,14 @@
+# 8 必备包 — 版本下限来源: references/env_requirements.md §A.2 实物版本
+# Python 解释器要求: 3.9+（推荐 3.11~3.13；不要用 3.14，pandas/numpy 无 cp314 wheel）
+pyyaml>=5.1,<7          # 实物 6.0.3 — config.yaml 加载
+jinja2>=3.0             # 实物 3.1.6 — agent{1,2,3}_prompt_template.j2 渲染
+pandas>=1.3,<3          # 实物 2.3.3 — 任务表 × 6 维度表 JOIN
+numpy>=1.20             # 实物 2.2.6 — 分位数（store-tier-rules 复用）
+pytest>=7.0             # 实物 9.0.2 — tests/ 单元测试
+pytest-timeout>=2.0     # 实物 2.4.0 — probe_llm.py 超时控制
+requests>=2.25          # 实物 2.32.5 — HTTP 客户端
+openai>=1.0             # 待装 — Qwen DashScope OpenAI 兼容端点（本地 LLM 通路）
+
+# 可选（按需手动装，不进本清单）:
+#   pip install pytest-cov pytest-mock
+#   pip install lark-oapi

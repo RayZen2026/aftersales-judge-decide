@@ -1,0 +1,405 @@
+# aftersales-judge-decide config.yaml (L4 实例配置)
+# Per SKILL开发实践模版参考.md §7.5.3 L4 实例配置 + §10.8 严格替换 + §10.14 L3 契约
+# v1.2 2026-08-10 04:17 (任锐拍板: 删 type + 加 description + primary_key 拆 name+id)
+#
+# 阻塞项 B1/B2/B3/B4 收口后补完 (规划 v2 Phase 1.1-1.3)
+#   B1 商品维度统计表 metadata: 任锐 Phase 1.1
+#   B2 门店表 metadata: 任锐 Phase 1.1
+#   B3 真实样本 10-20 条: 任锐 Phase 1.2
+#   B4 评估标准定稿: 任锐 + 助手联合 Phase 1.3
+#
+# 加载策略: 严格替换 + 启动时校验 (模板 §10.8 推荐)
+#   - ${VAR} 引用 env, env 缺失时启动失败
+#   - preflight 启动时检查完整 (模板 §7.6)
+#   - frontmatter requires.env: [BITABLE_APP_TOKEN_BUSINESS, BITABLE_APP_TOKEN_FIELDS,
+#                                   BITABLE_APP_TOKEN_RULES, PROBE_OUTPUT_DIR]
+#   - frontmatter requires.config: [config.yaml]
+#
+# 注: app_token 暂保留 ${VAR:default} 格式. 任锐 04:14 提及"目标表是其他的",
+# task_table 实际所属 base 待澄清, 不先动 default. Phase 1.1 收口时一并改严格替换.
+#
+# 23 个 select_fields 从 source table 拉 description (权威值):
+#   source: U7XQbSEq6axXfJsj2QocRxlQnqb/tblEMESCIIr4pqz8 (升级售后商家审核任务表)
+#   筛选: storage 目标必填=true (2026-08-10 04:17)
+
+task_table:
+  app_token: U7XQbSEq6axXfJsj2QocRxlQnqb
+  table_id: tblEMESCIIr4pqz8
+  source_url: https://bggc.feishu.cn/wiki/IM07wGjh9iVU64kNu8gcjirQn0K?table=tblEMESCIIr4pqz8
+  select_fields:
+  - id: fldxDQnNyE
+    name: 诉求类型
+    description: 门店升级售后期望的赔付方式，退货，赔付金额，退货或者赔付金额
+  - id: fldKfKBloR
+    name: 升级售后提交间隔天数
+    description: 提交升级售后间隔到达门店的间隔天数
+  - id: fldKV4ZEaE
+    name: 是否商家问题
+    description: 售后问题是否和商家相关，1是0否
+  - id: fldO5pHYLP
+    name: 商品id
+    description: 商品id
+  - id: fldH0zTCHs
+    name: 举证视频数量
+    description: 提交升级售后的视频数量
+  - id: fldP0kVZm1
+    name: 升级售后类型
+    description: 升级售后的类型，包括处理中升级售后和超时升级售后
+  - id: fld9PHO9cE
+    name: 商品名称
+    description: 商品名称
+  - id: fldhrYo0gc
+    name: 店铺ID
+    description: 门店/店铺id
+  - id: fldmUd9B3A
+    name: 审批ID
+    description: 审批流中的唯一值
+  - id: fldX23DjlP
+    name: 是否平台问题
+    description: 售后问题是否和平台相关 1 是 0 否
+  - id: fldUXp1BPA
+    name: 是否物流问题
+    description: 售后问题是否和物流相关 1 是 0 否
+  - id: fldFvRcTiM
+    name: 商品等级
+    description: 商品的等级 特A级>A级>AB级>B级> C级
+  - id: fldaSJtufi
+    name: 是否全品类商家
+    description: 商家类型是否全品类商家，1 是 0 否
+  - id: fldA8gUOuf
+    name: 举证图片数量
+    description: 提交升级售后的图片数量
+  - id: fldinz10mV
+    name: 订单日期
+    description: 门店下单日期
+  - id: fld5zIP7VN
+    name: 升级售后单号
+    description: 升级售后单唯一值
+  - id: fldgQkDwGD
+    name: 诉求赔付金额
+    description: 门店升级之后的期望赔付金额
+  - id: fldAd49C55
+    name: 是否代理人问题
+    description: 售后问题是否和代理人相关 1 是 0 否
+  - id: fldUmAgcBk
+    name: 处理状态
+    description: 升级售后处理判责的状态
+  - id: fldsviXbus
+    name: 商品实付金额
+    description: 门店实际支付了的商品及嗯
+  - id: fldhgqef1Z
+    name: 申请人
+    description: 申请审计售后的人员姓名
+  - id: fld46KrcQu
+    name: 是否严重品质问题
+    description: 售后问题是否有严重品质问题 1 是 0 否
+  - id: fld6rfaAgc
+    name: 是否门店问题
+    description: 售后问题是否和门店提交不规范相关 1 是 0 否
+  primary_key_name: 升级售后单号
+  primary_key_id: fld5zIP7VN
+
+
+
+dimensions:
+  result_table:
+    app_token: HGDzb2h7MaydFxsqlyAcCpALnB1
+    table_id: tblQFKdViDyghC65
+    source_url: https://bggc.feishu.cn/wiki/QtV8wiiSuikve7kOzaKcS4tEnXb?table=tblQFKdViDyghC65&view=vewWdG3ptr
+    primary_key_name: 升级售后单号
+    primary_key_id: fld2kYC6CJ
+    select_fields:
+    - id: fld2kYC6CJ
+      name: 升级售后单号
+      description: 关联 task_table 主键（写入结果表时的唯一标识）
+    - id: fldmD1FCt5
+      name: 判责理由
+      description: AGENT 输出的综合判责意见
+    - id: fldj0PLWUz
+      name: 提价结果类型
+      description: 同意 / 拒绝（AGENT 输出的承担比例调整动作结论）
+  product_dimension_table:
+    app_token: HGDzb2h7MaydFxsqlyAcCpALnB1
+    table_id: tblkP6fdG2OxN8JP
+    source_url: https://bggc.feishu.cn/wiki/QtV8wiiSuikve7kOzaKcS4tEnXb?table=tblkP6fdG2OxN8JP&view=vewtGin7Xb
+    primary_key:
+    - name: 商品id
+      id: fld6XaSkNv
+    - name: 日期
+      id: fldvOOyVdL
+    join_conditions:
+    - source_field: 商品id
+      source_field_id: fld6XaSkNv
+      target_field: 商品id
+      target_field_id: fldO5pHYLP
+    - source_field: 日期
+      source_field_id: fldvOOyVdL
+      target_field: 订单日期
+      target_field_id: fldinz10mV
+    select_fields:
+    - id: fldgrj0STh
+      name: 前7日商家自然日售后成功占比
+      description: T-7到T-1商家申诉且通过的售后单去重数量占T-7到T-1商家申诉售后单去重数量
+    - id: fldsRShSDT
+      name: 前7日商家自然日售后申诉占比
+      description: T-7到T-1商家提出申诉的售后单去重数量占T-7到T-1商家收到的售后单去重数量
+    - id: fldB3vS97n
+      name: 近7日商品售后赔付率
+      description: T-6到T0商品赔付金额占T-6到T0商品送达金额
+    - id: fldvOOyVdL
+      name: 日期
+      description:
+    - id: flddOeZIjU
+      name: 前7日商家自然日售后单量
+      description: T-7到T-1商家收到的售后单去重数量
+    - id: fldaOoEUgJ
+      name: 同品类供货商家数量
+      description: 相同四级类目下上架商品的商家去重数
+    - id: fldRqNrqp5
+      name: 商家品类送达金额占同品类比例
+      description: 商家在四级类目中送达金额占四级类目的送达金额
+    - id: fldHCZy0mV
+      name: 近7日商家品类下单店铺数占品类比例
+      description: T-6到T0商家四级类目每日下单店铺数总计占T-6到T0四级类目每日下单店铺数合计比例
+    - id: flduDkUYm4
+      name: m4到m1日均售后单数量
+      description: T-4到T-1每日提交的售后单去重数量合计/T-4到T-1商品有交易的天数
+    - id: fldyuqAw3T
+      name: 近7日商家品类售后赔付率
+      description: T-6到T0商家四级类目赔付金额占T-6到T0商家四级类目送达金额
+    - id: fldhSeQ3Ti
+      name: 近7日售后赔付率
+      description: T-6到T0商品的赔付金额占T-6到T0商品的送达金额
+    - id: fldeq33iYD
+      name: 商品占同品类比例
+      description: 商品在四级类目中送达金额占四级类目的送达金额
+    - id: fld695JHSx
+      name: 近7日品类售后赔付率
+      description: T-6到T0四级类目赔付金额/T-6到T0商家四级类目送达金额
+    - id: fld6XaSkNv
+      name: 商品id
+      description:
+    - id: fldZmLqVST
+      name: m8到m5日均售后单数量
+      description: T-8到T-5每日提交的售后单去重数量合计/T-8到T-5商品有交易的天数
+  store_table:
+    app_token: HGDzb2h7MaydFxsqlyAcCpALnB1
+    table_id: tblHJNJq8IEhlOs3
+    source_url: https://bggc.feishu.cn/wiki/QtV8wiiSuikve7kOzaKcS4tEnXb?table=tblHJNJq8IEhlOs3&view=vewEOGawDa
+    primary_key_name: 店铺id
+    primary_key_id: flddnKx1AO
+    join_field_name: 店铺ID
+    join_field_id: fldhrYo0gc
+    select_fields:
+    - id: fld1xR7wG4
+      name: 近90天下单天数
+      description: 近90天(T-89至T0)的门店交易下单天数
+    - id: fld7JoYEYA
+      name: 近30天下单金额
+      description: 近30天(T-29至T0)的门店交易下单时产生商品交易金额求和
+    - id: fldB3IdZEA
+      name: m13到m7下单天数
+      description: 
+    - id: fldCrF0buI
+      name: m13到m3升级售后天数
+      description: T-13至T-3的门店发生了升级售后的天数
+    - id: fldDCJK3Ej
+      name: 近14日售后数量占比
+      description: T-13至T0的门店售后商品件数占T-13至T0的门店到货商品件数比例
+    - id: fldEa4k6BJ
+      name: 最近下单间隔天数
+      description: 在商城最近一次下单间隔现在的天数
+    - id: fldHCNaC9v
+      name: 30日售后赔付率
+      description: T-29至T0的门店售后赔付金额占T-29至T0的门店售后送达货值比例
+    - id: fldJDsYf9d
+      name: 最早下单间隔天数
+      description: 在商城首次下单间隔现在的天数
+    - id: fldKFRmWeP
+      name: 近14天下单水果品类数
+      description: T-13至T0的门店下单水果的四级类目数量
+    - id: fldLivHAKl
+      name: 近14天下单水果品类中位数
+      description: T-13至T0的门店下单水果的四级类目数量的中位数
+    - id: fldNNJjVCT
+      name: 近7天下单天数
+      description: 
+    - id: fldNbOW4zj
+      name: 近7日升级售后自然日平台承担金额
+      description: 
+    - id: fldTJgS9hF
+      name: m13到m3升级售后且4日复购次数占比
+      description: T-13至T-3的门店发生了升级售后的日期在后T0到T+3共4天有复购行为的天数占T-13至T-3的门店发生了升级售后的
+    - id: fldYdftqqN
+      name: 近7天平台抽佣金额
+      description: 近7天(T-6至T0)的门店在交易过程中平台根据商品抽佣率得到的归属于平台收入求和
+    - id: fldbKdHSV0
+      name: 近30天下单天数
+      description: 近30天(T-29至T0)的门店交易下单天数
+    - id: fldbzvWI30
+      name: 14日售后赔付率
+      description: T-13至T0的门店售后赔付金额占T-13至T0的门店售后送达货值比例
+    - id: flddnKx1AO
+      name: 店铺id
+      description: 门店/店铺的唯一标识id
+    - id: fldfF1yYkN
+      name: 近30天自然日售后单数量
+      description: 近30天(T-29至T0)的售后提交日期时产生的售后单量求和
+    - id: fldoSNs9UO
+      name: 近14天下单品类数
+      description: 
+    - id: fldtg82jNA
+      name: 日期
+      description: 自然日期；后缀带'自然日'表示售后自然日，否则为订单自然日
+    - id: fldu61hPns
+      name: 近30天自然日撤销售后单数量
+      description: 近30天(T-29至T0)的门店提交售后且撤销的售后单量
+
+# ===== AST 规则表（应用层 = AST 消费方：先 fetch 后 provider）=====
+ast_rules:
+  store_tier:                              # 阶段 2 batch 消费
+    fetch:                                  # 应用层自己 lark-cli 拉
+      app_token: HGDzb2h7MaydFxsqlyAcCpALnB1
+      table_id: tbllJ5aMajBhYRjIs
+      source_url: https://bggc.feishu.cn/wiki/QtV8wiiSuikve7kOzaKcS4tEnXb?table=tbllJ5aMajBhYRjIs&view=vewQEBYm73
+      sort:
+        - field: 日期
+          field_id: fldJngjYMN
+          direction: desc
+      limit: 1
+      fetch_fields:
+        - name: 门店分层规则
+          field_id: fldfAqG3wB
+    provider: store-tier-rules             # 拉取后用 store-tier-rules SKILL（apply_tier 算法）
+    interface: import
+    function: apply_tier                   # apply_tier(shop_id, rules, store_stats) → A/B/C/D/其他
+    use_llm: false
+    
+  aftersales_judgment:                     # 阶段 3 per-item 消费（AGENT 2 prompt 注入）
+    fetch:                                  # 应用层自己 lark-cli 拉
+      app_token: HGDzb2h7MaydFxsqlyAcCpALnB1
+      table_id: tblty9QJT2g7caeg
+      source_url: https://bggc.feishu.cn/wiki/QtV8wiiSuikve7kOzaKcS4tEnXb?table=tblty9QJT2g7caeg&view=...
+      filter:
+        - field: 是否生效
+          field_id: fldHsJr6kG
+          op: eq
+          value: 是
+      sort:
+        - field: 优先级
+          field_id: flddnAK6BZ
+          direction: desc
+      fetch_fields:                         # 5 字段（任锐 09:26 + 09:58 拍板，副作用不在内）
+        - name: 优先级
+          field_id: flddnAK6BZ
+        - name: 触发条件AST                    # ★ 任锐 09:58 拍板：LLM 用这个
+          field_id: fld4IQbIrS
+        - name: 调整动作类型
+          field_id: fld5YOKao4
+        - name: 比例系数
+          field_id: fldfumk6A3
+        - name: 责任方
+          field_id: fldNDIS3K5
+    provider: null                          # ★ 不调 SKILL（应用层直接拼 prompt 给 LLM）
+    consume: llm_prompt_injection           # LLM 消费（AST 树 JSON 字符串直接嵌入）
+    use_llm: reference_only
+
+magic_numbers:
+  stale_timeout_minutes: 5
+  payment_threshold_yuan: 200
+  batch_size: 30
+  max_tokens: 30000
+  temperature: 0.1
+  retry_max: 3
+  dedup_window_hours: 24
+  manual_review_threshold: null
+
+llm:
+  shared_chain:
+  - miaoda/glm-5.1
+  - miaoda/qwen-3.7-plus
+  - miaoda/doubao-seed-2.0-pro
+  - miaoda/minimax-m3
+  agent3_chain:
+  - miaoda/doubao-seed-2.0-pro
+  - miaoda/minimax-m3
+  params:
+    max_tokens: 30000
+    temperature: 0.1
+  retry:
+    backoff_seconds:
+    - 0.5
+    - 1
+    - 2
+    honor_retry_after: true
+cron:
+  schedule: 0 10-23 * * *
+  timezone: Asia/Shanghai
+failure:
+  retry:
+  - llm_rate_limit
+  - llm_5xx
+  - bitable_temp_unavailable
+  manual_review:
+  - appeal_info_insufficient
+  - rule_conflict
+  - llm_ability_exceeded
+  terminal:
+  - credential_invalid
+  - rule_not_found
+  - data_corrupted
+state_machine:
+  states:
+  - pending
+  - processing
+  - manual_review
+  - completed
+  - failed
+  terminal:
+  - completed
+  - failed
+notify:
+  channels:
+  - type: feishu_dm
+    target: ou_8f870f9b1670d27d033d91fda17ade4e
+  - type: memory_file
+    path: memory/notify_<date>.md
+  dedup:
+    window_hours: 24
+    key: upgrade_order_id
+lock:
+  scope: per_item
+  stale_minutes: 5
+  acquire_field: status
+  acquire_value: processing
+  release_states:
+  - completed
+  - failed
+  - manual_review
+preflight:
+- name: feishu_creds
+  check: env_present
+  targets:
+  - BITABLE_APP_TOKEN_BUSINESS
+  - BITABLE_APP_TOKEN_FIELDS
+  - BITABLE_APP_TOKEN_RULES
+  fail_action: abort
+- name: bitable_access
+  check: lark_read
+  targets:
+  - task_table
+  - result_table
+  - product_dimension_table
+  - store_table
+  fail_action: abort
+- name: llm_chain
+  check: llm_ping
+  target: miaoda/glm-5.1
+  fail_action: warn_only
+- name: cron_config
+  check: cron_registered
+  fail_action: warn_only
+- name: disk_space
+  check: disk_min_mb
+  threshold_mb: 500
+  fail_action: warn_only
