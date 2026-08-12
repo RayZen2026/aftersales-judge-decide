@@ -10,7 +10,7 @@
 |---|---|---|---|---|
 | Phase 0 | PROPOSAL + 框架初始化 | 2-3 天 | PROPOSAL.md pending + SKILL 目录 | 无 |
 | Phase 1 | PROPOSAL 收口 + 探针基础测试 | 5-7 天 | 阻塞项 4 类收口 + probe_llm.py 跑通 | 4 类阻塞数据(确认 review) |
-| Phase 1.5 | 探针迭代 + AGENT 切分拍板 | 3-5 天 | 3 轮调优 + AGENT 1-3 切分定稿 | Phase 1 数据集 |
+| Phase 1.5 | 探针迭代 + AGENT 切分拍板 | 3-5 天 | 3 轮调优 + AGENT 1-3 切分定稿 | ✅ 2026-08-12 收口:切 1 AGENT |
 | Phase 1.8 | v1.6 doc 升版(4 项硬约束) | 1-2 天 | 飞书 doc 升 v1.6,frontmatter/preflight/L4/§11.1 | AGENT 切分拍板 |
 | Phase 2 | 核心模块 + 数据访问 | 7-10 天 | state_machine.py / failure_handler.py / llm.py / feishu_bitable.py | 无 |
 | Phase 3 | 主流程 + 单 AGENT 探针回归 | 5-7 天 | agent1/2/3.py + main.py + 单测 + 10-20 样本回归 | Phase 1.5 切分定稿 |
@@ -39,15 +39,17 @@
 
 ## 2. Phase 1: PROPOSAL 收口 + 探针基础测试(5-7 天)
 
+> **收口状态(2026-08-12,✅ 阶段型收口)**:T1.4a 数据层 / T1.4 探针框架 / T1.5 / T1.6 完成,T1.7 由切分拍板解决(D-20260812-007 切 1 AGENT)。残留 3 项转 Phase 3 回归:标注扩充(GT 现 4 条 → 10-20 条)、准确率口径定稿(自由文本/比例对比方法)、PROPOSAL review 形式项。
+
 ### 任务清单
 - [ ] 确认 review PROPOSAL → 提供 4 类阻塞数据（进行中：metadata 已收口，样本 live 就绪，人工标注未就绪）
 - [x] 维度表 metadata 收口(商品维度统计表 + 门店表 app_token / table_id / 字段映射) —— 2026-08-12 实查收口：6 表全部可读，config.yaml 验证；门店分层规则 table_id 笔误修复（tbllJ5aMajBhYRjIs → tbllJ5aMjBhYRjIs）
-- [x] **T1.4a 数据层探针版（补遗，原计划遗漏）**：`scripts/data_loader.py` —— live lark-cli + CSV 双来源 → 统一 SampleSet schema；维度 JOIN（商品按商品id+订单日期 日期级匹配 / 门店快照按店铺id）+ apply_tier 集成（submodules/store-tier-rules import）；Phase 2 feishu_bitable.py 复用同一数据契约，只换 fetch 实现
+- [x] **T1.4a 数据层探针版（补遗，原计划遗漏）**：`scripts/data_loader.py` —— live lark-cli + CSV 双来源 → 统一 SampleSet schema；维度 JOIN（商品按商品id+订单日期 日期级匹配 / 门店快照按店铺id）+ apply_tier 集成（submodules/store-tier-rules import）；**拉取范围 = 视图「近两天数据」**（D-20260812-006；filter-json 覆盖视图过滤 → 状态过滤客户端，范围 = 未处理 + 已处理-失败）；Phase 2 feishu_bitable.py 复用同一数据契约，只换 fetch 实现
 - [ ] 真实样本数据 10-20 条准备（Round 1：live 拉取已通；Round 2：人工标注 CSV → expected 填充）
 - [ ] 评估标准定稿(准确率 / 一致性 / latency 阈值)（Round 1 只跑格式/一致性/latency；准确率口径 Round 2，2026-08-12 确认拍板）
 - [x] probe_llm.py 框架(Phase 1 实质实现: DashScope qwen-plus-latest 占位全链 + jinja2 渲染 + JSON 提取/schema 校验 + 报告对齐 eval_standard §8) + config.yaml 补 `probe` 块(output_dir / test_scenarios / evaluation_rubric / llm / task_fetch / task_field_mapping / store_tier)
-- [ ] **T1.5 1 AGENT 完整流程探针**(5-10 样本)——**1 vs 3 决策基线**(设计方案 §0.1:探针通过 → 改 1 AGENT)；Round 1 = 端到端跑通(格式/一致性/latency)
-- [ ] **T1.6 3 AGENT 单 AGENT 探针**(5-10 样本/AGENT,3 AGENT 是当前基线)；Round 1 = 端到端跑通
+- [x] **T1.5 1 AGENT 完整流程探针**(5-10 样本)——**1 vs 3 决策基线**(设计方案 §0.1:探针通过 → 改 1 AGENT)；**Round 1 跑通完成**（2026-08-12：5 样本 × 3 runs，格式 1.0 / latency P95 13.3s / 一致性 core 0.34）；准确率判定待 Round 2
+- [x] **T1.6 3 AGENT 单 AGENT 探针**(5-10 样本/AGENT,3 AGENT 是当前基线)；**Round 1 跑通完成**（2026-08-12：5 样本 × 3 runs × 3 AGENT，格式 1.0 / latency P95 8.9s / 需人工信号 7/45）；准确率判定待 Round 2
 - [ ] **T1.7 1 vs 3 决策门**:1 AGENT 全部达标 → 切 1 AGENT;任一不达标 → 保持 3 AGENT(判定标准 `assets/eval/eval_standard.md`,决策规则 `references/architecture.md` §3.5)——推迟 Round 2(需人工标注准确率)
 
 ### 探针参数
@@ -59,6 +61,13 @@
 - 4 类阻塞数据(确认 review 时一次性提供)
 
 ## 3. Phase 1.5: 探针迭代 + AGENT 切分拍板(3-5 天)
+
+### 收口状态(2026-08-12,✅ 已收口)
+
+- **决策 = 切 1 AGENT**(D-20260812-007,确认拍板):Round 1 探针 1-AGENT 端到端跑通(格式校验 100%),快速落地优先;3 AGENT 方案暂停
+- **完成 1 轮调优**(输出 schema v2 + C 类诉求代价判决标准 + judgment_basis 判责依据层):一致性 core **0.34 → 0.125**,格式校验 1.0,单调用 P95 23.9s(schema v2 输出变大)
+- **GT 对比**(`assets/eval/ground_truth_v1.csv` 4 单 × 3 runs):action/提价结果类型 12/12 ✅;amount 精确 3/4(794255 探针 200 vs GT 150,门店诉求 200 被 GT 审核砍价);满足期望类型 11/12;**承担比例全 50:50 vs GT 1:9/1:9/3:7/5:5 ❌——LLM 把平台上限 50% 当默认值,系统性偏差,Phase 3 prompt 调优首要项**
+- **遗留风险转 Phase 3 回归 + Phase 5 观察期**:一致性 core 12.5% 仍超 5% 阈值;准确率未正式评估(GT 仅 4 单);比例偏差;latency 23.9s 贴近 30s 端到端预算
 
 ### 3 轮调优上限
 - 1 轮 = 跑 1 次单 AGENT 探针(5-10 样本 × 3 AGENT)+ 评估切分质量 + 调 1 次切分
@@ -105,14 +114,15 @@
 
 ## 6. Phase 3: 主流程 + 单 AGENT 探针回归(5-7 天)
 
+> AGENT 切分已锁 = 1 AGENT(D-20260812-007);实现按 agent_single 融合模板,agent{1,2,3} 模板保留为参考。
+
 ### 任务清单
-- [ ] `agent1.py`(门店期望判定)+ 单 AGENT 探针回归(5-10 样本)
-- [ ] `agent2.py`(承担方比例判责)+ 单 AGENT 探针回归
-- [ ] `agent3.py`(综合判责意见)+ 单 AGENT 探针回归
+- [ ] `agent_single.py`(1-AGENT 完整流程判责,schema v2 输出)+ 探针回归(5-10 样本)
+- [ ] **承担比例偏差修复**(GT 对比发现:全 50:50 默认化;需 prompt 明确比例反映证据强度、上限≠默认值)
 - [ ] `main.py` Workflow 编排(阶段 1/2/3)
-- [ ] `分配校正` 纯数学模块
-- [ ] 集成测试(全 AGENT 串行 + 状态机推进 + 写表)
-- [ ] 10-20 样本正式回归(评估标准验收)
+- [ ] `分配校正` 纯数学模块(Phase 1 已提前实现 allocate_correction,platform/merchant 术语)
+- [ ] 集成测试(状态机推进 + 写表)
+- [ ] 10-20 样本正式回归(评估标准验收,含 GT 扩充集准确率)
 
 ## 7. Phase 4: 端到端 + 生产部署(5-7 天)
 
@@ -160,4 +170,4 @@
 | 2 | 门店表 metadata | Phase 1.1 维度数据 JOIN | ✅ 2026-08-12 实查收口 |
 | 3 | 真实样本 10-20 条 | Phase 1.2 探针基础测试 | 🟡 部分就绪(live 拉取已通;人工标注 CSV Round 2) |
 | 4 | 评估标准定稿 | Phase 1.2 探针基础测试 | 🟡 部分就绪(Round 1 只跑格式/一致性/latency;准确率口径 Round 2) |
-| 5 | AGENT 切分定稿(1 vs 3 决策 + 边界调优,Phase 1.5 探针后)| Phase 1.8 v1.6 doc 升版 | ⏳ Phase 1.5 探针后 |
+| 5 | AGENT 切分定稿(1 vs 3 决策 + 边界调优,Phase 1.5 探针后)| Phase 1.8 v1.6 doc 升版 | ✅ 2026-08-12 拍板 = 切 1 AGENT(D-20260812-007) |

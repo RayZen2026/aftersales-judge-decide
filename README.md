@@ -81,6 +81,29 @@ SKILL 上线后**只暴露** `auto` / `manual` 2 个用户使用模式。`probe`
 4. **生效判责规则仅 1 条**（数据现状：是否生效=是 只 1 行）——大量样本走"规则无匹配"路径，规则覆盖是 Round 2 准确率的前置。
 5. **一致性超阈值**：core 口径 0.34-0.61 > 评估标准 15% 上限——Round 2 调优方向：temperature 0.1→0.0 / few-shot / 代价判决标准显式化。
 
+## Phase 1.5 收口：切 1 AGENT + schema v2 + GT 对比（2026-08-12）
+
+**拍板**：切 1 AGENT（D-20260812-007，3 AGENT 方案暂停，快速落地优先）；代理人上限 20%（D-20260812-008）。
+
+**1 轮调优**（schema v2 = judgment_basis 判责依据层 + 提价结果类型/满足期望类型 + C 类诉求代价判决标准 + platform 术语）：
+
+| 指标 | Round 1 | 调优后 | 标准 |
+|---|---|---|---|
+| 格式校验率 | 1.0 | **1.0** | 100% ✅ |
+| 一致性 core | 0.34 | **0.125** | ≤5% ❌（大幅改善仍未达） |
+| latency P95 | 13.3s | **23.9s** | 端到端 ≤30s ✅（schema v2 输出变大） |
+
+**GT 对比**（`assets/eval/ground_truth_v1.csv` 4 单 × 3 runs）：
+
+| 维度 | 结果 |
+|---|---|
+| action / 提价结果类型 | 12/12 ✅ |
+| amount 精确匹配 | 3/4（794255：探针 200 vs GT 150——GT 审核砍价，探针按诉求额全赔） |
+| 满足期望类型 | 11/12 |
+| **承担比例** | ❌ 全 runs 50:50 vs GT 1:9/1:9/3:7/5:5——LLM 把平台上限 50% 当默认值，Phase 3 首要调优项 |
+
+**遗留风险（转 Phase 3 回归 + Phase 5 观察期）**：一致性 12.5% 仍超 5%；准确率未正式评估（GT 仅 4 单）；比例偏差；latency 贴近预算。
+
 ## v2 规范引用（SKILL 撰写规范，不进 SKILL.md body）
 
 | 规范 | 用途 | 章节 |
@@ -113,6 +136,10 @@ SKILL 上线后**只暴露** `auto` / `manual` 2 个用户使用模式。`probe`
 | **D-20260812-003** | 决策 | 数据层补遗（T1.4a data_loader.py）：live/CSV 双来源 → 统一 SampleSet；Phase 2 复用契约只换 fetch | 确认 |
 | **D-20260812-004** | 决策 | CSV 范围 = 任务表样本 + 人工标注表；维度数据走 live JOIN | 确认 |
 | **D-20260812-005** | 决策 | store-tier-rules 开发路径 submodules/（gitignore），部署经 STORE_TIER_RULES_DIR 注入；只 import apply_tier | 确认 |
+| **D-20260812-006** | 决策 | 任务表拉取范围 = 视图「近两天数据」（vewdVsAfk9，审批创建时间 > Yesterday 相对滚动窗），不拉全量；filter-json 会覆盖视图过滤（实测）→ 处理状态走客户端过滤 | 确认 |
+| **D-20260812-007** | 决策 | **AGENT 切分 = 切 1 AGENT**（Round 1 探针 1-AGENT 端到端跑通：格式校验 100% / 单调用 P95 13.3s，确认拍板快速落地；3 AGENT 方案暂停）。一致性/准确率未达 eval_standard 的风险转 Phase 3 回归 + Phase 5 观察期；切分影响面锁 LLM 调用层（architecture.md §3.5） | 确认 |
+| **D-20260812-008** | 决策 | 代理人维护补偿上限 = **20%**（源文档 §5.2 写 15% vs §9 写 20% 不一致，拍板 20%）；business_context §6.1 闭环 | 确认 |
+| **D-20260812-009** | 决策 | 1-AGENT 输出 schema v2 定稿：结论层（action/amount/responsibility 平台:商家/提价结果类型/满足期望类型）+ 期望层 + **判责依据层 judgment_basis**（门店画像/事实认定/责任判定/规则引用/决策对比，面向业务人员）+ 元数据层；GT 样例 = assets/eval/ground_truth_v1.csv（4 条）；术语 meituan → platform 对齐 GT | 确认 |
 | **LCE-20260812-001** | 教训 | formula 字段返回字符串数字（30日售后赔付率='0.073...'）→ apply_tier 前必须数值 coerce | 实查 |
 | **LCE-20260812-002** | 教训 | lark-cli envelope 双形态（外层 {ok,data} vs 裸 envelope）→ 解析必须防御解包 | 实查 |
 | **LCE-20260812-003** | 教训 | 任务表/维度表 datetime 格式不一致（T00:00+08 vs T08:00+08）→ JOIN 按日期级匹配 | 实查 |
@@ -128,8 +155,8 @@ SKILL 上线后**只暴露** `auto` / `manual` 2 个用户使用模式。`probe`
 | 3 | 真实样本数据 10-20 条 | Phase 1.2 探针基础测试 | 🟡 live 拉取已通；人工标注 CSV Round 2 |
 | 4 | 评估标准定稿（准确率 / 一致性 / latency 阈值）| Phase 1.2 探针基础测试 | 🟡 Round 1 只跑格式/一致性/latency；准确率 Round 2 |
 | 5 | AGENT 1-3 切分定稿（Phase 1.5 探针后）| Phase 1.8 v1.6 doc 升版 | ⏳ 待探针 |
-| 6 | 代理人维护补偿上限 15% vs 20%（business_context §6.1 两处不一致）| AGENT 2 业务 prompt | ⏳ 待拍板 |
-| 7 | 任务表 处理状态 字段值（现仅"未处理"，5 状态选项待补）| Phase 2 写表 | ⏳ 待确认 |
+| 6 | 代理人维护补偿上限 15% vs 20%（business_context §6.1 两处不一致）| AGENT 2 业务 prompt | ✅ 2026-08-12 拍板 = 20%（D-20260812-008） |
+| 7 | 任务表 处理状态 字段值（现仅"未处理"+ 手动造 2 条"已处理-失败"，5 状态选项待补全）| Phase 2 写表 | 🟡 部分就绪（拉取过滤已兼容，后续添加） |
 
 ## 文档
 
