@@ -37,6 +37,10 @@ package-lock.json
 probes/
 probe-results-*.json
 
+# 运行时通知状态（feishu_notify memory 通道 + 24h 去重状态）
+memory/
+state/
+
 
 # 本地临时文件
 trash/

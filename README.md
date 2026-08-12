@@ -4,7 +4,7 @@
 
 ## 状态
 
-**Phase 1 进行中 — Round 1 探针端到端跑通**（SKILL.md 探针拍板后再建）
+**Phase 2 完成**（2026-08-12：6 核心模块 + 170 用例全绿，覆盖率 90-100%；下一步 Phase 3 主流程）
 
 - **Round 1 / Round 2 拍板**（2026-08-12 确认）：输出 schema 未定稿，Round 1 目标 = 探针**端到端跑通**（格式校验/一致性/latency）；准确率评估 + T1.7 1 vs 3 决策门推迟 Round 2（人工标注就绪后）。探针 LLM = DashScope `qwen-plus-latest` 单模型占位全链（本地无妙搭）。CSV 通道只覆盖任务表样本 + 人工标注表，维度数据走 lark-cli live JOIN。
 - **数据层补遗**（2026-08-12）：原 Phase 1 计划遗漏数据拉取模块，补 `scripts/data_loader.py`（T1.4a）——live/CSV 双来源 → 统一 SampleSet schema；Phase 2 feishu_bitable.py 复用契约只换 fetch 实现。

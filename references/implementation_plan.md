@@ -12,7 +12,7 @@
 | Phase 1 | PROPOSAL 收口 + 探针基础测试 | 5-7 天 | 阻塞项 4 类收口 + probe_llm.py 跑通 | ✅ 2026-08-12 阶段型收口 |
 | Phase 1.5 | 探针迭代 + AGENT 切分拍板 | 3-5 天 | 3 轮调优 + AGENT 1-3 切分定稿 | ✅ 2026-08-12 收口:切 1 AGENT |
 | Phase 1.8 | 部署准备(v1.6 内容 + 一次性 apply) | 1-2 天 | SKILL.md 重建草稿 + 4 项硬约束 | ✅ 触发满足;Phase 3 后执行(D-20260812-010) |
-| Phase 2 | 核心模块 + 数据访问 | 7-10 天 | state_machine.py / failure_handler.py / llm.py / feishu_bitable.py | 无 |
+| Phase 2 | 核心模块 + 数据访问 | 7-10 天 | state_machine.py / failure_handler.py / llm.py / feishu_bitable.py | ✅ 2026-08-12 完成(6 模块 + 170 用例) |
 | Phase 3 | 主流程 + 单 AGENT 探针回归 | 5-7 天 | agent_single.py + main.py + 单测 + 10-20 样本回归 | ✅ 切分已锁(1 AGENT) |
 | Phase 4 | 端到端 + 生产部署 | 5-7 天 | test_main_table 端到端 + cron 配置 + 监控告警 + 全量切流 | Phase 3 探针通过 |
 | Phase 5 | 观察期 + 优化 | 1 周(7 天 × 14 次/天 = 98 次 cron)| 调优 prompt/参数/状态机实现细节 | Phase 4 部署完成 |
@@ -107,14 +107,17 @@
 
 ## 5. Phase 2: 核心模块 + 数据访问(7-10 天)
 
+> **状态（2026-08-12，✅ 完成）**：6 模块全部落地，170 用例全绿，覆盖率 ≥90%（计划要求 ≥80%）。
+> 两个安全门：写飞书表需 env `BITABLE_WRITE_ENABLED=1`；飞书私聊需 `FEISHU_NOTIFY_ENABLED=1`（防开发误写生产/打扰确认人）。
+
 ### 任务清单
-- [ ] `state_machine.py`(5 状态机 + 9 类失败映射)
-- [ ] `failure_handler.py`(9 类失败分类 + 3 大类处理)
-- [ ] `llm.py`(4+2 降级链 + 限流退避 + 共享链/独立链)
-- [ ] `feishu_bitable.py`(4 张表 CRUD + 锁机制)
-- [ ] `feishu_notify.py`(飞书私聊 + memory_file 双通道 + 24h 去重)
-- [ ] `lock.py`(per-item 抢锁 + stale 5min 兜底)
-- [ ] 每个模块单测(pytest,覆盖率 ≥ 80%)
+- [x] `state_machine.py`(5 状态机 + 合法转移表 + 表值双向映射（含 未处理/待处理 别名）+ 拉取矩阵语义) 96%
+- [x] `failure_handler.py`(9 类失败分类 + 3 大类处理决策（重试/需人工/终态 + 通知/写表策略）+ config 契约校验) 98%
+- [x] `llm.py`(4+2 降级链编排 + 模型内重试/backoff/honor_retry_after + DashScope 开发后端 + Miaoda 生产后端 Phase 4 占位 + 错误分类映射 9 类失败) 94%
+- [x] `feishu_bitable.py`(任务表 update 幂等 + 判责结果表 upsert 1 单 1 行 + 锁封装 + 读侧复用 data_loader 契约 + 写保护门) 100%
+- [x] `feishu_notify.py`(飞书私聊 + memory_file 双通道 + 24h 同单号同异常类型去重持久化 + 飞书失败降级 memory + 发送门) 90%
+- [x] `lock.py`(per-item 抢锁判定 + stale 5min 兜底；实物适配：任务表无"任务处理时间"字段，用系统字段 更新时间(fldCQOdVZI) 作 stale 基准) 93%
+- [x] 每个模块单测(pytest,覆盖率 ≥ 80%——实际 90-100%)
 
 ## 6. Phase 3: 主流程 + 单 AGENT 探针回归(5-7 天)
 
@@ -136,6 +139,7 @@
 - [ ] 失败场景演练(9 类失败全跑)
 - [ ] OpenClaw cron 配置(hourly 10-23 Asia/Shanghai)
 - [ ] 监控 + 告警(飞书私聊 + memory_file)
+- [ ] memory_file 通知通道路径对齐 OpenClaw workspace memory 目录（开发期为 SKILL 目录 memory/ 下的文件近似，config `notify.channels[memory_file].path` 可调；去重状态独立在 state/，不入 memory 通道）
 - [ ] 第一次跑(小流量验证)+ 全量切流
 
 ## 8. Phase 5: 观察期 + 优化(1 周)
