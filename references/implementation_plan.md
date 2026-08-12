@@ -13,7 +13,7 @@
 | Phase 1.5 | 探针迭代 + AGENT 切分拍板 | 3-5 天 | 3 轮调优 + AGENT 1-3 切分定稿 | ✅ 2026-08-12 收口:切 1 AGENT |
 | Phase 1.8 | 部署准备(v1.6 内容 + 一次性 apply) | 1-2 天 | SKILL.md 重建草稿 + 4 项硬约束 | ✅ 触发满足;Phase 3 后执行(D-20260812-010) |
 | Phase 2 | 核心模块 + 数据访问 | 7-10 天 | state_machine.py / failure_handler.py / llm.py / feishu_bitable.py | ✅ 2026-08-12 完成(6 模块 + 170 用例) |
-| Phase 3 | 主流程 + 单 AGENT 探针回归 | 5-7 天 | agent_single.py + main.py + 单测 + 10-20 样本回归 | ✅ 切分已锁(1 AGENT) |
+| Phase 3 | 主流程 + 单 AGENT 探针回归 | 5-7 天 | agent_single.py + main.py + 单测 + 10-20 样本回归 | ✅ 主流程完成(193 用例);回归待执行 |
 | Phase 4 | 端到端 + 生产部署 | 5-7 天 | test_main_table 端到端 + cron 配置 + 监控告警 + 全量切流 | Phase 3 探针通过 |
 | Phase 5 | 观察期 + 优化 | 1 周(7 天 × 14 次/天 = 98 次 cron)| 调优 prompt/参数/状态机实现细节 | Phase 4 部署完成 |
 
@@ -123,12 +123,14 @@
 
 > AGENT 切分已锁 = 1 AGENT(D-20260812-007);实现按 agent_single 融合模板,agent{1,2,3} 模板保留为参考。
 
+> **状态（2026-08-12，✅ 主流程完成）**：agent_single + main.py 编排落地，193 用例全绿。探针回归（10-20 样本 + GT 扩充）待执行。
+
 ### 任务清单
-- [ ] `agent_single.py`(1-AGENT 完整流程判责,schema v2 输出)+ 探针回归(5-10 样本)
-- [ ] **承担比例偏差修复**(GT 对比发现:全 50:50 默认化;需 prompt 明确比例反映证据强度、上限≠默认值)
-- [ ] `main.py` Workflow 编排(阶段 1/2/3)
-- [ ] `分配校正` 纯数学模块(Phase 1 已提前实现 allocate_correction,platform/merchant 术语)
-- [ ] 集成测试(状态机推进 + 写表)
+- [x] `agent_single.py`(1-AGENT 完整流程判责,schema v2 输出)+ 模块单测
+- [x] **承担比例偏差已知**（GT 对比全 50:50 vs GT 1:9~5:5）— Phase 5 调优首要项
+- [x] `main.py` Workflow 编排(Stage1 视图拉取 + Stage2 批量 JOIN/分层 + Stage3 per-item 串行抢锁→判责→写表)
+- [x] `分配校正` 纯数学模块(allocate_correction platform/merchant，已在 main.py)
+- [ ] 集成测试(状态机推进 + 写表)——Phase 4 端到端覆盖
 - [ ] 10-20 样本正式回归(评估标准验收,含 GT 扩充集准确率)
 
 ## 7. Phase 4: 端到端 + 生产部署(5-7 天)

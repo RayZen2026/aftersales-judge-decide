@@ -1,305 +1,371 @@
 #!/usr/bin/env python3
 """
-aftersales-judge-decide main.py skeleton
-v0.1.0 Phase 0 占位版
+aftersales-judge-decide main.py — Phase 3 主流程实现
 
-完整 Workflow(待 Phase 2-3 实现):
-  Stage 1: 触发 + 拉取(batch)
-  Stage 2: 数据准备(batch)
-  Stage 3: 单条处理循环(per-item, 串行)
-    抢锁 → 字段匹配 → N AGENT 串行 → 9 类失败处理 → 5 状态机推进 → 写表 → 通知
+架构（architecture.md §1 + §2 + §3）：
+  Stage 1: 触发 + 拉取（batch）
+    - cron 空跑检测（cron 空跑不通知，原则 10）
+    - stale 5min 兜底重抢（原则 8）
+    - 视图「近两天数据」拉取（D-20260812-006）+ 客户端状态过滤
+  Stage 2: 数据准备（batch）
+    - 维度 JOIN（商品 + 门店）
+    - 门店分层 AST 求值（apply_tier，不调 LLM，原则 2）
+    - 判责规则 AST 拉取（AGENT prompt 注入用）
+  Stage 3: per-item 串行
+    - 抢锁（lock.check_lockable → feishu_bitable.acquire_lock）
+    - 字段匹配检验（必填字段缺失 → 通知 + 释放 + 跳过）
+    - agent_single.run（1-AGENT 完整判责，D-20260812-007）
+    - failure_handler.decide → 状态机 + 写表 + 通知（9 类失败 → 3 大类）
+    - 释放锁
 
-路径 A argparse(v2.0 §5.1):
-  auto   - cron hourly 10-23 触发(默认)
-  manual - 单条处理(指定 item_id)
-  test   - 端到端测试(独立 test_main_table)
-  probe  - 探针基础测试(Phase 1.5-1.7, 3 轮调优上限)
-
-⚠️ 占位版 = 函数签名 + 文档,逻辑待 Phase 2-3 填充
+CLI 模式（v2.0 §5.1）：
+  auto   - cron 自动（默认，对外暴露）
+  manual - 手动单条（对外暴露）
+  probe  - 探针（开发内部，不进 SKILL.md body）
+  test   - 端到端（开发内部，Phase 4 实现）
 """
+from __future__ import annotations
 
 import argparse
-import sys
-import os
 import json
 import logging
+import os
+import sys
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Optional
 
-# 路径常量
-BASE_DIR = Path(__file__).parent.parent
+import yaml
+
+BASE_DIR = Path(__file__).resolve().parent.parent
 CONFIG_PATH = BASE_DIR / "config.yaml"
-ASSETS_DIR = BASE_DIR / "assets"
-TEMPLATES_DIR = ASSETS_DIR / "agent_prompt_templates"
-LOGS_DIR = BASE_DIR / "logs"
-PROBES_DIR = BASE_DIR / "probes"
+CST = timezone(timedelta(hours=8))
 
-# 配置加载(占位,Phase 2.1 真实实现)
-def load_config():
-    """Load config.yaml (Phase 2.1 实现 L4 严格替换)"""
-    # TODO Phase 2.1: 严格替换策略(v2.0 §10.8)
-    if CONFIG_PATH.exists():
-        import yaml
-        with open(CONFIG_PATH, "r", encoding="utf-8") as f:
-            return yaml.safe_load(f)
-    return {}
+logger = logging.getLogger("aftersales-judge-decide")
 
 
-# 日志初始化(占位)
-def init_logging():
-    """Init logging (Phase 2 实现)"""
+# ============================================================
+# 配置与初始化
+# ============================================================
+
+def load_config(path: Optional[Path] = None) -> dict:
+    """YAML 加载（Phase 4 升级为 L4 严格替换）。"""
+    p = Path(path) if path else CONFIG_PATH
+    with open(p, "r", encoding="utf-8") as f:
+        return yaml.safe_load(f)
+
+
+def init_logging(level: str = "INFO") -> logging.Logger:
     logging.basicConfig(
-        level=logging.INFO,
-        format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
-    )
+        level=getattr(logging, level, logging.INFO),
+        format="%(asctime)s [%(levelname)s] %(name)s: %(message)s")
     return logging.getLogger("aftersales-judge-decide")
 
 
-# ============================================================
-# AGENT 占位函数(Phase 3 真实实现,3 轮探针调优后定稿)
-# ============================================================
-
-def agent1(input_data: dict) -> dict:
-    """
-    AGENT 1: 门店期望判定
-    LLM 共享链: glm-5.1 → qwen-3.7-plus → doubao-seed-2.0-pro → minimax-m3
-
-    输入: input_data = {
-        "item_id": str,
-        "appeal_content": str,
-        "appeal_type": str,  # 退货/赔付金额/退货或者赔付金额
-        "appeal_amount": int,  # 元
-        "aftersales_type": str,  # 处理中/超时
-        "dimension_data": {"product": dict, "store": dict}
-    }
-
-    输出: {
-        "store_expected": "应退货"|"应赔付"|"应退货或赔付"|"需人工",
-        "store_expected_amount": int,
-        "reasoning": str,
-        "confidence": float
-    }
-    """
-    # TODO Phase 3.1: 渲染 agent1_prompt_template.j2 + 调 LLM 共享链 + 解析 JSON
-    return {
-        "store_expected": "需人工",
-        "store_expected_amount": 0,
-        "reasoning": "AGENT 1 占位实现,待 Phase 3.1 真实实现",
-        "confidence": 0.0,
-    }
-
-
-def agent2(input_data: dict, agent1_output: dict) -> dict:
-    """
-    AGENT 2: 承担方比例判责
-    LLM 共享链: 同 AGENT 1
-
-    输入: input_data + agent1_output
-
-    输出: {
-        "responsibility": {"platform": int, "merchant": int},  # 0-100, 之和=100
-        "reasoning": str,
-        "confidence": float,
-        "key_factors": list
-    }
-    """
-    # TODO Phase 3.2: 渲染 agent2_prompt_template.j2 + 调 LLM 共享链 + 解析 JSON
-    return {
-        "responsibility": {"platform": 0, "merchant": 0},
-        "reasoning": "AGENT 2 占位实现,待 Phase 3.2 真实实现",
-        "confidence": 0.0,
-        "key_factors": [],
-    }
-
-
 def allocate_correction(responsibility: dict) -> dict:
-    """
-    分配校正(纯数学,不调 LLM,D-20260806-008)
-    确保 platform + merchant = 100(等比缩放)
-
-    输入: responsibility = {"platform": int, "merchant": int}
-    输出: responsibility(校正后)
-    """
-    # TODO Phase 3.4: 等比缩放实现
-    p = responsibility.get("platform", 0)
-    s = responsibility.get("merchant", 0)
+    """分配校正（纯数学，D-20260806-008）——供 agent_single.py import。"""
+    p = responsibility.get("platform", 0) or 0
+    s = responsibility.get("merchant", 0) or 0
     total = p + s
     if total == 0:
         return {"platform": 0, "merchant": 0}
-    return {
-        "platform": round(p * 100 / total),
-        "merchant": round(s * 100 / total),
-    }
+    return {"platform": round(p * 100 / total), "merchant": round(s * 100 / total)}
 
 
-def agent3(input_data: dict, agent1_output: dict, agent2_output: dict, responsibility_corrected: dict) -> dict:
-    """
-    AGENT 3: 综合判责意见
-    LLM 独立链: doubao-seed-2.0-pro → minimax-m3(综合任务不需 reasoning 强模型)
-
-    输入: input_data + agent1_output + agent2_output + responsibility_corrected
-
-    输出: {
-        "judgment_summary": str,  # 200-800 字
-        "action": "退款"|"退货"|"赔付"|"无需处理"|"需人工",
-        "amount": int,
-        "responsibility_summary": str,  # "美团 X% / 商家 Y%"
-        "confidence": float,
-        "tags": list
-    }
-    """
-    # TODO Phase 3.3: 渲染 agent3_prompt_template.j2 + 调 LLM 独立链 + 解析 JSON
-    return {
-        "judgment_summary": "AGENT 3 占位实现,待 Phase 3.3 真实实现",
-        "action": "需人工",
-        "amount": 0,
-        "responsibility_summary": "美团 0% / 商家 0%",
-        "confidence": 0.0,
-        "tags": [],
-    }
+def _make_backend(cfg: dict):
+    """开发期 DashScopeBackend；生产 MiaodaBackend（Phase 4 切换）。"""
+    from llm import DashScopeBackend  # noqa: PLC0415
+    return DashScopeBackend(cfg)
 
 
 # ============================================================
-# Workflow 占位(Phase 3.4 真实实现)
+# Stage 1: 触发 + 拉取
 # ============================================================
 
-def stage1_fetch(logger) -> list:
+def check_stale_and_reclaim(cfg: dict, fb) -> int:
+    """stale 5min 兜底重抢：扫处理中记录，超时的重置为 failed 供下次 cron 重试。
+
+    fb: feishu_bitable 模块（注入便于测试）。返回重抢数量。
     """
-    Stage 1: 触发 + 拉取(batch)
-    - cron 触发检查(单 JOB 单 Task, stale 5min 兜底)
-    - 拉取任务: WHERE 处理状态 IN ('待处理', '已处理-失败') AND 审批时间窗口
-    """
-    # TODO Phase 3.4: 调 lark-cli 拉取
-    logger.info("Stage 1: fetch (占位, 待 Phase 3.4 真实实现)")
-    return []
+    from data_loader import record_list, normalize_date  # noqa: PLC0415
+    from lock import check_lockable, is_stale            # noqa: PLC0415
+    from state_machine import STATE_TABLE_VALUES         # noqa: PLC0415
+
+    stale_min = cfg["lock"]["stale_minutes"]
+    now = datetime.now(CST)
+    tt = cfg["task_table"]
+    env = record_list(cfg, app_token=tt["app_token"], table_id=tt["table_id"],
+                      field_names=["升级售后单号", "处理状态", "更新时间"],
+                      filter_json=json.dumps({"logic": "and", "conditions": [
+                          ["处理状态", "==", STATE_TABLE_VALUES["processing"]]
+                      ]}, ensure_ascii=False), limit=200)
+    reclaimed = 0
+    for row, rid in zip(env.records, env.record_ids):
+        if rid and is_stale(row.get("更新时间"), now, stale_min):
+            logger.warning("stale 重抢: %s (%s)", row.get("升级售后单号"), rid)
+            fb.release_lock(cfg, rid, "failed")
+            reclaimed += 1
+    return reclaimed
 
 
-def stage2_prepare(items: list, logger) -> list:
-    """
-    Stage 2: 数据准备(batch)
-    - 维度数据 JOIN(2 张维度表: 商品维度统计表 + 门店表)
-    - 解析门店等级(AST 规则 + 数据, 不调 LLM)
-    - 读 config.yaml 业务参数
-    """
-    # TODO Phase 3.4: 维度表 JOIN + 读 config
-    logger.info(f"Stage 2: prepare {len(items)} items (占位, 待 Phase 3.4 真实实现)")
-    return items
-
-
-def stage3_process_per_item(item: dict, logger) -> dict:
-    """
-    Stage 3: 单条处理(per-item, 串行)
-    - 抢单条锁(per-item, 处理状态=已处理-处理中)
-    - 字段匹配检验(per-item, 失败 → 飞书通知 + 抢锁释放 + 跳过)
-    - 3 AGENT 串行(agent1 → agent2 → agent3)
-    - 9 类失败处理 + 5 状态机推进
-    - 写判责结果表(成功/需人工)
-    - 写回任务表状态
-    - 抢锁释放
-    """
-    # TODO Phase 3.4: 完整流程实现
-    logger.info(f"Stage 3: process {item.get('item_id')} (占位, 待 Phase 3.4 真实实现)")
-
-    # 占位 Workflow: 3 AGENT 串行
-    a1 = agent1(item)
-    a2 = agent2(item, a1)
-    corrected = allocate_correction(a2.get("responsibility", {}))
-    a3 = agent3(item, a1, a2, corrected)
-
-    return {
-        "item_id": item.get("item_id"),
-        "agent1": a1,
-        "agent2": a2,
-        "responsibility_corrected": corrected,
-        "agent3": a3,
-    }
+def stage1_fetch(cfg: dict) -> tuple[list[dict], list[str]]:
+    """视图拉取 + 客户端状态过滤（D-20260812-006）。返回 (rows, record_ids)。"""
+    from data_loader import fetch_tasks_live  # noqa: PLC0415
+    limit = cfg["magic_numbers"]["batch_size"]
+    env = fetch_tasks_live(cfg, limit=limit)
+    return env.records, env.record_ids
 
 
 # ============================================================
-# 4 个 subcommand 入口(v2.0 §5.1 路径 A)
+# Stage 2: 数据准备
 # ============================================================
 
-def cmd_auto(args, logger):
-    """auto 模式: cron hourly 10-23 触发(默认)"""
-    logger.info("auto mode (占位, 待 Phase 3.4 真实实现)")
-    items = stage1_fetch(logger)
-    items = stage2_prepare(items, logger)
-    results = [stage3_process_per_item(item, logger) for item in items]
-    logger.info(f"auto mode done, processed {len(results)} items")
-    return {"mode": "auto", "processed": len(results)}
+def stage2_prepare(cfg: dict, tasks: list[dict]) -> tuple[list[dict], list[dict]]:
+    """维度 JOIN + 分层（batch）+ 判责规则拉取。
 
-
-def cmd_manual(args, logger):
-    """manual 模式: 单条处理(指定 item_id)"""
-    logger.info(f"manual mode item_id={args.item_id} (占位, 待 Phase 3.4 真实实现)")
-    # TODO Phase 3.4: 拉取单条 + 3 AGENT 串行 + 写表
-    return {"mode": "manual", "item_id": args.item_id, "status": "占位"}
-
-
-def cmd_test(args, logger):
-    """test 模式: 端到端测试(独立 test_main_table)"""
-    logger.info(f"test mode table_id={args.table_id} (占位, 待 Phase 4.1 真实实现)")
-    # TODO Phase 4.1: 端到端 1 → 3 → 10 → 30 完整单
-    return {"mode": "test", "table_id": args.table_id, "status": "占位"}
-
-
-def cmd_probe(args, logger):
-    """probe 模式: 探针基础测试(Phase 1.5-1.7)
-
-    Round 1 = 端到端跑通(格式/一致性/latency);准确率 + 1 vs 3 决策门 Round 2。
-    委托 probe_llm.run_probe(延迟 import 避免循环依赖: probe_llm 顶层 from main import allocate_correction)。
+    返回 (enriched_samples, judgment_rules)。
+    enriched_samples[i] = {task, dimension_data, join_meta, item_id, record_id}
     """
-    import probe_llm  # noqa: PLC0415
-    logger.info(f"probe mode={args.probe_mode} runs={args.runs} samples_file={args.samples_file}")
-    return probe_llm.run_probe(args, load_config(), logger)
+    from data_loader import (  # noqa: PLC0415
+        fetch_product_dimension, fetch_store_dimension,
+        fetch_store_tier_rules, fetch_judgment_rules,
+        compute_store_tier, normalize_date,
+    )
+    # 批量拉取规则（每次 cron 拉一次，batch 内复用）
+    try:
+        tier_rules = fetch_store_tier_rules(cfg)
+    except Exception as e:  # noqa: BLE001
+        logger.warning("门店分层规则拉取失败, 全部降级: %s", e)
+        tier_rules = None
+    judgment_rules = fetch_judgment_rules(cfg)
+    samples = []
+    for row in tasks:
+        order_date = normalize_date(row.get("订单日期"))
+        product = fetch_product_dimension(cfg, row.get("商品id"), order_date)
+        store = fetch_store_dimension(cfg, row.get("店铺ID"))
+        tier, tier_reason = compute_store_tier(cfg, store, tier_rules)
+        samples.append({
+            "item_id": row.get("升级售后单号"),
+            "task": row,
+            "dimension_data": {"product": product, "store": store, "store_tier": tier},
+            "join_meta": {"product_matched": product is not None,
+                          "store_matched": store is not None,
+                          "tier_degraded": tier is None,
+                          "tier_degrade_reason": tier_reason},
+        })
+    return samples, judgment_rules
 
 
 # ============================================================
-# 入口
+# Stage 3: per-item 串行
+# ============================================================
+
+REQUIRED_TASK_FIELDS = [
+    "升级售后单号", "诉求类型", "升级售后类型",
+    "商品id", "店铺ID", "订单日期",
+]
+
+
+def _check_required_fields(task_row: dict) -> list[str]:
+    return [f for f in REQUIRED_TASK_FIELDS
+            if task_row.get(f) in (None, "", -1, "-1")]
+
+
+def process_item(cfg: dict, sample: dict, record_id: str,
+                 judgment_rules: list, backend, fb, notify_dedup) -> str:
+    """单条处理（抢锁→判责→写表→释放）。返回最终状态内部键。"""
+    import agent_single                            # noqa: PLC0415
+    from failure_handler import decide             # noqa: PLC0415
+    from feishu_notify import notify               # noqa: PLC0415
+    from lock import check_lockable, acquire_fields  # noqa: PLC0415
+    from state_machine import (                    # noqa: PLC0415
+        from_table_value, to_table_value, assert_transition,
+    )
+
+    task_row = sample["task"]
+    item_id = sample["item_id"] or "?"
+    now = datetime.now(CST)
+    stale_min = cfg["lock"]["stale_minutes"]
+
+    # 抢锁（防御性）
+    state = from_table_value(task_row.get("处理状态") or "未处理")
+    lock_check = check_lockable(state, task_row.get("更新时间"), now, stale_min)
+    if not lock_check.acquirable:
+        logger.info("跳过 %s: %s", item_id, lock_check.reason)
+        return state
+    fb.acquire_lock(cfg, record_id)
+    logger.info("已抢锁 %s (%s)", item_id, lock_check.reason)
+
+    # 字段匹配检验
+    missing = _check_required_fields(task_row)
+    if missing:
+        logger.warning("%s 必填字段缺失 %s, 释放锁跳过", item_id, missing)
+        notify(cfg, notify_dedup, item_id, "appeal_info_insufficient",
+               f"必填字段缺失: {missing}", now)
+        fb.release_lock(cfg, record_id, "pending")  # 退回待处理
+        return "pending"
+
+    # 1-AGENT 判责
+    result = agent_single.run(cfg, backend, task_row,
+                              sample["dimension_data"], judgment_rules)
+
+    # 9 类失败处理
+    if not result.ok:
+        decision = decide(result.failure_type or "llm_ability_exceeded")
+        target = decision.target_state
+        fb.release_lock(cfg, record_id, target)
+        if decision.notify:
+            notify(cfg, notify_dedup, item_id, result.failure_type or "llm_ability_exceeded",
+                   "; ".join(result.format_errors or [result.failure_type or ""]), now)
+        if decision.write_result_table and result.output:
+            _write_result(cfg, fb, item_id, result.output)
+        logger.info("%s 失败 %s → %s", item_id, result.failure_type, target)
+        return target
+
+    # 成功或需人工（manual_review_signal）
+    if result.manual_review_signal:
+        target = "manual_review"
+        fb.release_lock(cfg, record_id, target)
+        notify(cfg, notify_dedup, item_id, "rule_conflict",
+               "规则无匹配或模型判定需人工", now)
+        if result.output:
+            _write_result(cfg, fb, item_id, result.output)
+        logger.info("%s 需人工", item_id)
+        return target
+
+    # 成功终态
+    fb.release_lock(cfg, record_id, "completed")
+    _write_result(cfg, fb, item_id, result.output)
+    logger.info("%s 完成: action=%s amount=%s",
+                item_id,
+                result.output.get("action"),
+                result.output.get("amount"))
+    return "completed"
+
+
+def _write_result(cfg: dict, fb, item_id: str, output: dict) -> None:
+    fields = fb.build_result_fields(item_id, output)
+    try:
+        fb.upsert_result_record(cfg, fields)
+    except Exception as e:  # noqa: BLE001
+        logger.error("写判责结果表失败 %s: %s", item_id, e)
+
+
+# ============================================================
+# cmd_auto / cmd_manual / cmd_probe / cmd_test
+# ============================================================
+
+def _run_workflow(cfg: dict) -> dict:
+    """auto/manual 共用的完整 Workflow。"""
+    import feishu_bitable as fb                    # noqa: PLC0415
+    from feishu_notify import NotifyDedup          # noqa: PLC0415
+
+    notify_dedup = NotifyDedup(window_hours=cfg["notify"]["dedup"]["window_hours"])
+    backend = _make_backend(cfg)
+
+    # Stage 1
+    tasks, record_ids = stage1_fetch(cfg)
+    if not tasks:
+        logger.info("无待处理任务, 本次 cron 空跑 (原则 10 不通知)")
+        return {"processed": 0, "skipped": 0, "results": {}}
+
+    # stale 兜底（在 Stage1 拉出列表后，Stage3 遍历前）
+    check_stale_and_reclaim(cfg, fb)
+
+    # Stage 2
+    samples, judgment_rules = stage2_prepare(cfg, tasks)
+
+    # Stage 3
+    results: dict[str, str] = {}
+    for sample, rid in zip(samples, record_ids):
+        if not rid:
+            logger.warning("record_id 缺失, 跳过 %s", sample.get("item_id"))
+            continue
+        final_state = process_item(cfg, sample, rid, judgment_rules, backend, fb, notify_dedup)
+        results[sample["item_id"]] = final_state
+
+    stats = {s: sum(1 for v in results.values() if v == s)
+             for s in ("completed", "failed", "manual_review", "pending", "processing")}
+    return {"processed": len(results), "results": results, "stats": stats}
+
+
+def cmd_auto(args, logger_) -> dict:
+    cfg = load_config()
+    result = _run_workflow(cfg)
+    logger_.info("auto 完成: %s", result["stats"])
+    return {"mode": "auto", **result}
+
+
+def cmd_manual(args, logger_) -> dict:
+    """手动处理单条（manual 模式，直接跳 Stage1 拉取视图只取指定单号）。"""
+    import feishu_bitable as fb                    # noqa: PLC0415
+    from feishu_notify import NotifyDedup          # noqa: PLC0415
+    from data_loader import record_list            # noqa: PLC0415
+
+    cfg = load_config()
+    tt = cfg["task_table"]
+    field_names = cfg["probe"]["task_fetch"]["field_names"]
+    env = record_list(cfg, app_token=tt["app_token"], table_id=tt["table_id"],
+                      field_names=field_names,
+                      filter_json=json.dumps({"logic": "and", "conditions": [
+                          ["升级售后单号", "==", args.item_id]
+                      ]}, ensure_ascii=False), limit=1)
+    if not env.records:
+        return {"mode": "manual", "error": f"单号不存在: {args.item_id}"}
+
+    samples, judgment_rules = stage2_prepare(cfg, env.records)
+    notify_dedup = NotifyDedup(window_hours=cfg["notify"]["dedup"]["window_hours"])
+    backend = _make_backend(cfg)
+    final = process_item(cfg, samples[0], env.record_ids[0],
+                         judgment_rules, backend, fb, notify_dedup)
+    return {"mode": "manual", "item_id": args.item_id, "final_state": final}
+
+
+def cmd_probe(args, logger_) -> dict:
+    """probe 模式：委托 probe_llm.run_probe（开发内部）。"""
+    import probe_llm                               # noqa: PLC0415
+    cfg = load_config()
+    logger_.info("probe mode=%s runs=%s", args.probe_mode, args.runs)
+    return probe_llm.run_probe(args, cfg, logger_)
+
+
+def cmd_test(args, logger_) -> dict:
+    """test 模式：Phase 4 端到端（占位）。"""
+    return {"mode": "test", "status": "Phase 4 实现（test_main_table）"}
+
+
+# ============================================================
+# CLI 入口
 # ============================================================
 
 def main():
-    """CLI 入口: argparse 4 subcommand"""
     parser = argparse.ArgumentParser(
         prog="aftersales-judge-decide",
-        description="升级售后判责主流程 SKILL - 编排 + 执行"
-    )
+        description="升级售后判责主流程 SKILL")
     subparsers = parser.add_subparsers(dest="mode", required=True)
 
-    # auto (cron hourly 10-23, 默认)
-    p_auto = subparsers.add_parser("auto", help="cron 自动模式")
-    p_auto.add_argument("--batch-size", type=int, default=30, help="单次 Task 拉取上限")
-
-    # manual
+    # 对外暴露（SKILL.md body 只写这两个）
+    subparsers.add_parser("auto", help="cron 自动模式")
     p_manual = subparsers.add_parser("manual", help="手动处理单条")
-    p_manual.add_argument("--item-id", required=True, help="升级售后单号")
+    p_manual.add_argument("--item-id", required=True)
 
-    # test (端到端)
-    p_test = subparsers.add_parser("test", help="端到端测试")
-    p_test.add_argument("--table-id", required=True, help="test_main_table ID")
+    # 开发内部（不进 SKILL.md body，CLAUDE.md §"开发模式"）
+    p_probe = subparsers.add_parser("probe", help="探针（开发内部）")
+    p_probe.add_argument("--probe-mode", choices=["1agent", "3agent", "both"], default="both")
+    p_probe.add_argument("--samples-file", default=None)
+    p_probe.add_argument("--samples", type=int, default=None)
+    p_probe.add_argument("--runs", type=int, default=None)
 
-    # probe (Phase 1.5 探针)
-    p_probe = subparsers.add_parser("probe", help="探针基础测试")
-    p_probe.add_argument("--probe-mode", choices=["1agent", "3agent", "both"],
-                         default="both", help="1agent=T1.5 完整流程 / 3agent=T1.6 串行链")
-    p_probe.add_argument("--samples-file", default=None,
-                         help="data_loader 产物 SampleSet JSON；缺省现场 live 拉取")
-    p_probe.add_argument("--samples", type=int, default=None, help="样本数上限")
-    p_probe.add_argument("--runs", type=int, default=None,
-                         help="一致性次数（默认 config probe.consistency_runs）")
+    p_test = subparsers.add_parser("test", help="端到端（开发内部，Phase 4）")
+    p_test.add_argument("--table-id", required=True)
 
     args = parser.parse_args()
-    logger = init_logging()
-    config = load_config()
-
-    # 派发
+    log = init_logging()
     dispatch = {
-        "auto": cmd_auto,
-        "manual": cmd_manual,
-        "test": cmd_test,
-        "probe": cmd_probe,
+        "auto": cmd_auto, "manual": cmd_manual,
+        "probe": cmd_probe, "test": cmd_test,
     }
-    result = dispatch[args.mode](args, logger)
+    result = dispatch[args.mode](args, log)
     print(json.dumps(result, ensure_ascii=False, indent=2))
 
 
