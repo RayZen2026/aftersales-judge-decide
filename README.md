@@ -140,6 +140,7 @@ SKILL 上线后**只暴露** `auto` / `manual` 2 个用户使用模式。`probe`
 | **D-20260812-007** | 决策 | **AGENT 切分 = 切 1 AGENT**（Round 1 探针 1-AGENT 端到端跑通：格式校验 100% / 单调用 P95 13.3s，确认拍板快速落地；3 AGENT 方案暂停）。一致性/准确率未达 eval_standard 的风险转 Phase 3 回归 + Phase 5 观察期；切分影响面锁 LLM 调用层（architecture.md §3.5） | 确认 |
 | **D-20260812-008** | 决策 | 代理人维护补偿上限 = **20%**（源文档 §5.2 写 15% vs §9 写 20% 不一致，拍板 20%）；business_context §6.1 闭环 | 确认 |
 | **D-20260812-009** | 决策 | 1-AGENT 输出 schema v2 定稿：结论层（action/amount/responsibility 平台:商家/提价结果类型/满足期望类型）+ 期望层 + **判责依据层 judgment_basis**（门店画像/事实认定/责任判定/规则引用/决策对比，面向业务人员）+ 元数据层；GT 样例 = assets/eval/ground_truth_v1.csv（4 条）；术语 meituan → platform 对齐 GT | 确认 |
+| **D-20260812-010** | 决策 | **开发期不走 skill_workshop 治理流程**（git 已覆盖审计/review/回滚；本仓 = staging，SKILL.md 有意删除、无活跃 SKILL 文件，不触 v2 §4.1）；Phase 1.8 改定位 = 部署准备（SKILL.md 重建草稿 + 4 项硬约束），**Phase 3 内容稳定后执行**；部署时一次性 propose-update apply（目标 workspace 若执行 v2 §4.1） | 确认 |
 | **LCE-20260812-001** | 教训 | formula 字段返回字符串数字（30日售后赔付率='0.073...'）→ apply_tier 前必须数值 coerce | 实查 |
 | **LCE-20260812-002** | 教训 | lark-cli envelope 双形态（外层 {ok,data} vs 裸 envelope）→ 解析必须防御解包 | 实查 |
 | **LCE-20260812-003** | 教训 | 任务表/维度表 datetime 格式不一致（T00:00+08 vs T08:00+08）→ JOIN 按日期级匹配 | 实查 |

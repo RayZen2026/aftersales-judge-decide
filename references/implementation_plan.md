@@ -9,11 +9,11 @@
 | Phase | 名称 | 工期 | 关键交付物 | 阻塞项 |
 |---|---|---|---|---|
 | Phase 0 | PROPOSAL + 框架初始化 | 2-3 天 | PROPOSAL.md pending + SKILL 目录 | 无 |
-| Phase 1 | PROPOSAL 收口 + 探针基础测试 | 5-7 天 | 阻塞项 4 类收口 + probe_llm.py 跑通 | 4 类阻塞数据(确认 review) |
+| Phase 1 | PROPOSAL 收口 + 探针基础测试 | 5-7 天 | 阻塞项 4 类收口 + probe_llm.py 跑通 | ✅ 2026-08-12 阶段型收口 |
 | Phase 1.5 | 探针迭代 + AGENT 切分拍板 | 3-5 天 | 3 轮调优 + AGENT 1-3 切分定稿 | ✅ 2026-08-12 收口:切 1 AGENT |
-| Phase 1.8 | v1.6 doc 升版(4 项硬约束) | 1-2 天 | 飞书 doc 升 v1.6,frontmatter/preflight/L4/§11.1 | AGENT 切分拍板 |
+| Phase 1.8 | 部署准备(v1.6 内容 + 一次性 apply) | 1-2 天 | SKILL.md 重建草稿 + 4 项硬约束 | ✅ 触发满足;Phase 3 后执行(D-20260812-010) |
 | Phase 2 | 核心模块 + 数据访问 | 7-10 天 | state_machine.py / failure_handler.py / llm.py / feishu_bitable.py | 无 |
-| Phase 3 | 主流程 + 单 AGENT 探针回归 | 5-7 天 | agent1/2/3.py + main.py + 单测 + 10-20 样本回归 | Phase 1.5 切分定稿 |
+| Phase 3 | 主流程 + 单 AGENT 探针回归 | 5-7 天 | agent_single.py + main.py + 单测 + 10-20 样本回归 | ✅ 切分已锁(1 AGENT) |
 | Phase 4 | 端到端 + 生产部署 | 5-7 天 | test_main_table 端到端 + cron 配置 + 监控告警 + 全量切流 | Phase 3 探针通过 |
 | Phase 5 | 观察期 + 优化 | 1 周(7 天 × 14 次/天 = 98 次 cron)| 调优 prompt/参数/状态机实现细节 | Phase 4 部署完成 |
 
@@ -42,15 +42,15 @@
 > **收口状态(2026-08-12,✅ 阶段型收口)**:T1.4a 数据层 / T1.4 探针框架 / T1.5 / T1.6 完成,T1.7 由切分拍板解决(D-20260812-007 切 1 AGENT)。残留 3 项转 Phase 3 回归:标注扩充(GT 现 4 条 → 10-20 条)、准确率口径定稿(自由文本/比例对比方法)、PROPOSAL review 形式项。
 
 ### 任务清单
-- [ ] 确认 review PROPOSAL → 提供 4 类阻塞数据（进行中：metadata 已收口，样本 live 就绪，人工标注未就绪）
+- [x] 确认 review PROPOSAL → 提供 4 类阻塞数据（metadata 收口 ✅ / 样本 live + GT 4 条 ✅ / 评估标准部分 ✅——准确率口径残留转 Phase 3）
 - [x] 维度表 metadata 收口(商品维度统计表 + 门店表 app_token / table_id / 字段映射) —— 2026-08-12 实查收口：6 表全部可读，config.yaml 验证；门店分层规则 table_id 笔误修复（tbllJ5aMajBhYRjIs → tbllJ5aMjBhYRjIs）
 - [x] **T1.4a 数据层探针版（补遗，原计划遗漏）**：`scripts/data_loader.py` —— live lark-cli + CSV 双来源 → 统一 SampleSet schema；维度 JOIN（商品按商品id+订单日期 日期级匹配 / 门店快照按店铺id）+ apply_tier 集成（submodules/store-tier-rules import）；**拉取范围 = 视图「近两天数据」**（D-20260812-006；filter-json 覆盖视图过滤 → 状态过滤客户端，范围 = 未处理 + 已处理-失败）；Phase 2 feishu_bitable.py 复用同一数据契约，只换 fetch 实现
-- [ ] 真实样本数据 10-20 条准备（Round 1：live 拉取已通；Round 2：人工标注 CSV → expected 填充）
+- [ ] 真实样本数据 10-20 条准备（live 拉取已通；GT 标注 4 条已入库 `assets/eval/ground_truth_v1.csv`；**扩充至 10-20 条转 Phase 3 回归**）
 - [ ] 评估标准定稿(准确率 / 一致性 / latency 阈值)（Round 1 只跑格式/一致性/latency；准确率口径 Round 2，2026-08-12 确认拍板）
 - [x] probe_llm.py 框架(Phase 1 实质实现: DashScope qwen-plus-latest 占位全链 + jinja2 渲染 + JSON 提取/schema 校验 + 报告对齐 eval_standard §8) + config.yaml 补 `probe` 块(output_dir / test_scenarios / evaluation_rubric / llm / task_fetch / task_field_mapping / store_tier)
 - [x] **T1.5 1 AGENT 完整流程探针**(5-10 样本)——**1 vs 3 决策基线**(设计方案 §0.1:探针通过 → 改 1 AGENT)；**Round 1 跑通完成**（2026-08-12：5 样本 × 3 runs，格式 1.0 / latency P95 13.3s / 一致性 core 0.34）；准确率判定待 Round 2
 - [x] **T1.6 3 AGENT 单 AGENT 探针**(5-10 样本/AGENT,3 AGENT 是当前基线)；**Round 1 跑通完成**（2026-08-12：5 样本 × 3 runs × 3 AGENT，格式 1.0 / latency P95 8.9s / 需人工信号 7/45）；准确率判定待 Round 2
-- [ ] **T1.7 1 vs 3 决策门**:1 AGENT 全部达标 → 切 1 AGENT;任一不达标 → 保持 3 AGENT(判定标准 `assets/eval/eval_standard.md`,决策规则 `references/architecture.md` §3.5)——推迟 Round 2(需人工标注准确率)
+- [x] **T1.7 1 vs 3 决策门**:1 AGENT 全部达标 → 切 1 AGENT;任一不达标 → 保持 3 AGENT(判定标准 `assets/eval/eval_standard.md`,决策规则 `references/architecture.md` §3.5)——**已解决(D-20260812-007 确认拍板 = 切 1 AGENT**;eval_standard 一致性/准确率未全达,确认知悉风险,转 Phase 3 回归 + Phase 5 观察期)
 
 ### 探针参数
 - 样本量: 5-10(快速验证,vs Phase 3 回归用 10-20)
@@ -89,17 +89,21 @@
 - 探针调优范围:prompt 措辞 / 切分边界(3 轮上限);**1 vs 3 决策** 见 `references/architecture.md` §3.5
 - 业务规则覆盖要求(责任方 / 诉求类型 A/B/C / 平台 50% 上限等)见 `references/business_context.md` §4
 
-## 4. Phase 1.8: v1.6 doc 升版(1-2 天)
+## 4. Phase 1.8: 部署准备（v1.6 内容 + 一次性 apply）(1-2 天)
 
-### 4 项硬约束(决策 4 触发)
+> **定位调整（2026-08-12，D-20260812-010 确认拍板）**：开发期不走 skill_workshop 治理流程——git 已覆盖审计/review/回滚，本仓是 staging（SKILL.md 有意删除，无活跃 SKILL 文件，不触 v2 §4.1 适用域）。本阶段 = 部署准备，**执行时机推迟到 Phase 3 后**（实现内容稳定再定稿，避免返工）；部署时一次性 propose-update apply（目标 workspace 若执行 v2 §4.1）。
+
+### 4 项硬约束 + 内容清单
+- [ ] **SKILL.md 重建草稿**（按 1 AGENT 定稿架构：操作手册 body ≤500 行；probe/test 开发模式不进 body，只暴露 auto/manual）
 - [ ] **frontmatter requires.bins**: `["lark-cli", "python3"]`(v2.0 §10.14 L3 契约)
 - [ ] **frontmatter requires.config**: `["config.yaml"]`(v2.0 §10.14 L3 契约)
-- [ ] **preflight 4-5 项**: feishu 凭据 / bitable 可达 / LLM 链 / 资源 / cron 冲突(v2.0 §7.6)
-- [ ] **L4 严格替换策略**: 防软替换陷阱(v2.0 §10.8)
+- [ ] **preflight 5 项**: feishu 凭据 / bitable 可达 / LLM 链 / cron 冲突 / 磁盘空间(v2.0 §7.6)
+- [ ] **L4 严格替换策略**: `${VAR}` 缺失即启动失败,防软替换陷阱(v2.0 §10.8)
 - [ ] **§11.1 SKILL.md 加 "Skill Workshop" 段**: v2.0 §4 流程描述
+- [ ] 飞书 doc v1.5 → v1.6（部署前同步）
 
 ### 触发条件
-- AGENT 切分拍板(决策 4)
+- ~~AGENT 切分拍板(决策 4)~~ ✅ 已满足（2026-08-12，D-20260812-007）；**执行时机 = Phase 3 内容稳定后**
 
 ## 5. Phase 2: 核心模块 + 数据访问(7-10 天)
 
