@@ -116,11 +116,23 @@ dimensions:
       name: 升级售后单号
       description: 关联 task_table 主键（写入结果表时的唯一标识）
     - id: fldmD1FCt5
-      name: 判责理由
-      description: AGENT 输出的综合判责意见
+      name: 判责结果                                  # 2026-08-12 实查修正（config 旧值"判责理由"与实际字段名不符）
+      description: AGENT 输出的综合判责意见（judgment_summary）
     - id: fldj0PLWUz
-      name: 提价结果类型
-      description: 同意 / 拒绝（AGENT 输出的承担比例调整动作结论）
+      name: 提交结果类型
+      description: 同意 / 拒绝 / 需人工（AGENT 输出 price_uplift_result_type）
+    - id: fldc2Ghb3q
+      name: 满足期望类型
+      description: 完全满足 / 部分满足 / 不满足 / 需人工（AGENT 输出 expectation_satisfaction_type）
+    - id: fldbUrTXIH
+      name: 判责报告
+      description: 判责依据详情（judgment_summary + judgment_basis，供业务人员查阅）
+  test_result_table:                                # Phase 4 端到端独立测试表
+    app_token: HGDzb2h7MaydFxsqlyAcCpALnB1
+    table_id: tblQ1btbmJsBESGd
+    source_url: https://bggc.feishu.cn/wiki/QtV8wiiSuikve7kOzaKcS4tEnXb?table=tblQ1btbmJsBESGd&view=vewWdG3ptr
+    primary_key_name: 升级售后单号
+    primary_key_id: fld2kYC6CJ
   product_dimension_table:
     app_token: HGDzb2h7MaydFxsqlyAcCpALnB1
     table_id: tblkP6fdG2OxN8JP

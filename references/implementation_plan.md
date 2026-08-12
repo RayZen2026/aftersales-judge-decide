@@ -14,7 +14,7 @@
 | Phase 1.8 | 部署准备(v1.6 内容 + 一次性 apply) | 1-2 天 | SKILL.md 重建草稿 + 4 项硬约束 | ✅ 触发满足;Phase 3 后执行(D-20260812-010) |
 | Phase 2 | 核心模块 + 数据访问 | 7-10 天 | state_machine.py / failure_handler.py / llm.py / feishu_bitable.py | ✅ 2026-08-12 完成(6 模块 + 170 用例) |
 | Phase 3 | 主流程 + 单 AGENT 探针回归 | 5-7 天 | agent_single.py + main.py + 单测 + 10-20 样本回归 | ✅ 主流程完成(193 用例);回归待执行 |
-| Phase 4 | 端到端 + 生产部署 | 5-7 天 | test_main_table 端到端 + cron 配置 + 监控告警 + 全量切流 | Phase 3 探针通过 |
+| Phase 4 | 端到端 + 生产部署 | 5-7 天 | test_main_table 端到端 + cron 配置 + 监控告警 + 全量切流 | ✅ 端到端验证通过;cron/监控/切流待配 |
 | Phase 5 | 观察期 + 优化 | 1 周(7 天 × 14 次/天 = 98 次 cron)| 调优 prompt/参数/状态机实现细节 | Phase 4 部署完成 |
 
 **总工期**: 28-41 天(实施) + 7 天(观察期) = 35-48 天
@@ -135,8 +135,17 @@
 
 ## 7. Phase 4: 端到端 + 生产部署(5-7 天)
 
+> **状态（2026-08-12，✅ 端到端验证通过）**：1 条冒烟 + 3 条完整 auto 流程均通过，任务表状态写入、test_result_table 写入正常。cron/监控/全量切流待配置。
+
 ### 任务清单
-- [ ] 端到端探针(1 → 3 → 10 → 30 完整单,使用 test_main_table 独立表)
+- [x] 字段映射修正（实查对齐）：判责理由→判责结果；提价结果类型→提交结果类型；新增满足期望类型 + 判责报告（judgment_summary+basis 格式化）；test_result_table 配置隔离
+- [x] 端到端探针（1 条冒烟 + 3 条完整 auto 流程 × 状态机推进 × 两表写入）
+- [ ] 准确率 / 一致性 / latency 评估（GT 扩充 10-20 条后）
+- [ ] 失败场景演练（9 类失败全跑）
+- [ ] OpenClaw cron 配置(hourly 10-23 Asia/Shanghai)
+- [ ] 监控 + 告警(飞书私聊 + memory_file)
+- [ ] memory_file 通知通道路径对齐 OpenClaw workspace memory 目录（开发期为 SKILL 目录 memory/ 下的文件近似，config `notify.channels[memory_file].path` 可调；去重状态独立在 state/，不入 memory 通道）
+- [ ] 第一次跑(小流量验证)+ 全量切流
 - [ ] 准确率 / 一致性 / latency 评估
 - [ ] 失败场景演练(9 类失败全跑)
 - [ ] OpenClaw cron 配置(hourly 10-23 Asia/Shanghai)

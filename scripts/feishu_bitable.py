@@ -38,7 +38,10 @@ def _task_table(cfg: dict) -> dict:
     return cfg["task_table"]
 
 
-def _result_table(cfg: dict) -> dict:
+def _result_table(cfg: dict, test_mode: bool = False) -> dict:
+    """test_mode=True 时用 test_result_table（Phase 4 端到端隔离）。"""
+    if test_mode and "test_result_table" in cfg.get("dimensions", {}):
+        return cfg["dimensions"]["test_result_table"]
     return cfg["dimensions"]["result_table"]
 
 
@@ -59,9 +62,10 @@ def update_task_record(cfg: dict, record_id: str, fields: dict) -> dict:
     return run_lark_cli(args, cfg)
 
 
-def find_result_record_id(cfg: dict, order_id: str) -> Optional[str]:
+def find_result_record_id(cfg: dict, order_id: str,
+                          test_mode: bool = False) -> Optional[str]:
     """判责结果表按 升级售后单号 查已有行（1 单 1 行幂等检查）。"""
-    rt = _result_table(cfg)
+    rt = _result_table(cfg, test_mode)
     filter_json = json.dumps(
         {"logic": "and", "conditions": [["升级售后单号", "==", order_id]]},
         ensure_ascii=False)
@@ -70,17 +74,19 @@ def find_result_record_id(cfg: dict, order_id: str) -> Optional[str]:
     return env.record_ids[0] if env.records else None
 
 
-def upsert_result_record(cfg: dict, fields: dict) -> dict:
+def upsert_result_record(cfg: dict, fields: dict,
+                         test_mode: bool = False) -> dict:
     """判责结果表 1 单 1 行幂等写：已有行 → update，无 → create。
 
     调用方保证只在 成功/需人工 终态调用（已处理-失败不写结果表）。
+    test_mode=True 时写 test_result_table（Phase 4 端到端隔离）。
     """
     _require_write_guard()
     order_id = fields.get("升级售后单号")
     if not order_id:
         raise ValueError("upsert_result_record: fields 必须含 升级售后单号")
-    rt = _result_table(cfg)
-    existing = find_result_record_id(cfg, order_id)
+    rt = _result_table(cfg, test_mode)
+    existing = find_result_record_id(cfg, order_id, test_mode)
     if existing:
         payload = json.dumps({"update_records": {existing: fields}}, ensure_ascii=False)
         args = ["base", "+record-batch-update",
@@ -114,14 +120,62 @@ def release_lock(cfg: dict, record_id: str, target_state: str) -> dict:
 # 判责结果写入（业务字段映射）
 # ============================================================
 
-def build_result_fields(order_id: str, output: dict) -> dict:
-    """1-AGENT 输出 schema v2 → 判责结果表字段（config dimensions.result_table）。
+def _format_judgment_report(output: dict) -> str:
+    """judgment_summary + judgment_basis → 判责报告（业务人员可读详情）。"""
+    parts = []
+    summary = output.get("judgment_summary") or ""
+    if summary:
+        parts.append(f"【判责结论】\n{summary}")
+    basis = output.get("judgment_basis") or {}
+    if isinstance(basis, dict):
+        labels = {
+            "store_profile": "【门店画像】",
+            "fact_finding": "【事实认定】",
+            "responsibility_reasoning": "【责任判定】",
+            "rule_reference": "【规则引用】",
+            "decision_comparison": "【决策对比】",
+        }
+        for k, label in labels.items():
+            v = basis.get(k)
+            if isinstance(v, str) and v.strip():
+                parts.append(f"{label}\n{v}")
+    return "\n\n".join(parts)
 
-    - 判责理由 ← judgment_summary（结论段）
-    - 提价结果类型 ← price_uplift_result_type（同意/拒绝/需人工）
+
+def _format_judgment_result(output: dict) -> str:
+    """格式化简短判责结论（写入「判责结果」字段，如"同意赔付77.43，平台商家1:9"）。"""
+    action = output.get("action") or "需人工"
+    amount = output.get("amount") or 0
+    resp = output.get("responsibility_corrected") or output.get("responsibility") or {}
+    platform = resp.get("platform", 0)
+    merchant = resp.get("merchant", 0)
+    if action == "赔付" and amount:
+        result = f"同意赔付{amount}，平台商家{platform}:{merchant}"
+    elif action == "退货":
+        result = f"同意退货，平台商家{platform}:{merchant}"
+    elif action == "退款":
+        result = f"同意退款，平台商家{platform}:{merchant}"
+    elif action == "无需处理":
+        result = "无需处理"
+    else:
+        result = f"需人工审核，平台商家{platform}:{merchant}"
+    return result
+
+
+def build_result_fields(order_id: str, output: dict) -> dict:
+    """1-AGENT 输出 schema v2 → 判责结果表写入字段（5 字段，2026-08-12 实查对齐）。
+
+    字段映射：
+      升级售后单号  ← order_id
+      判责结果      ← 简短格式化结论（如"同意赔付77.43，平台商家1:9"）
+      提交结果类型  ← price_uplift_result_type（同意/拒绝/需人工）
+      满足期望类型  ← expectation_satisfaction_type（完全满足/部分满足/不满足/需人工）
+      判责报告      ← judgment_summary + judgment_basis 格式化（业务人员查阅）
     """
     return {
         "升级售后单号": order_id,
-        "判责理由": output.get("judgment_summary") or "",
-        "提价结果类型": output.get("price_uplift_result_type") or "需人工",
+        "判责结果": _format_judgment_result(output),
+        "提交结果类型": output.get("price_uplift_result_type") or "需人工",
+        "满足期望类型": output.get("expectation_satisfaction_type") or "需人工",
+        "判责报告": _format_judgment_report(output),
     }

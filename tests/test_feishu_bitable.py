@@ -65,7 +65,7 @@ def test_update_task_record_requires_args(write_enabled):
 # ── 结果表 upsert（1 单 1 行幂等）──
 
 def test_upsert_creates_when_absent(write_enabled, capture_calls, monkeypatch):
-    monkeypatch.setattr(fb, "find_result_record_id", lambda cfg, oid: None)
+    monkeypatch.setattr(fb, "find_result_record_id", lambda cfg, oid, test_mode=False: None)
     fb.upsert_result_record(CFG, {"升级售后单号": "UAS1", "判责理由": "x"})
     args = capture_calls[0]
     assert "+record-batch-create" in args
@@ -74,7 +74,7 @@ def test_upsert_creates_when_absent(write_enabled, capture_calls, monkeypatch):
 
 
 def test_upsert_updates_when_exists(write_enabled, capture_calls, monkeypatch):
-    monkeypatch.setattr(fb, "find_result_record_id", lambda cfg, oid: "recEXIST")
+    monkeypatch.setattr(fb, "find_result_record_id", lambda cfg, oid, test_mode=False: "recEXIST")
     fb.upsert_result_record(CFG, {"升级售后单号": "UAS1", "判责理由": "x"})
     args = capture_calls[0]
     assert "+record-batch-update" in args
@@ -129,12 +129,30 @@ def test_release_lock_illegal_state(write_enabled):
 # ── 结果字段映射 ──
 
 def test_build_result_fields():
-    out = {"judgment_summary": "结论段", "price_uplift_result_type": "同意"}
+    resp = {"platform": 10, "merchant": 90}
+    out = {
+        "action": "赔付", "amount": 77.43,
+        "price_uplift_result_type": "同意",
+        "expectation_satisfaction_type": "完全满足",
+        "judgment_summary": "综合意见",
+        "judgment_basis": {"store_profile": "B级", "fact_finding": "品质问题",
+                           "responsibility_reasoning": "商家责任",
+                           "rule_reference": "无匹配", "decision_comparison": "赔付优先"},
+        "responsibility": resp,
+        "responsibility_corrected": resp,
+    }
     fields = fb.build_result_fields("UAS1", out)
-    assert fields == {"升级售后单号": "UAS1", "判责理由": "结论段", "提价结果类型": "同意"}
+    assert fields["升级售后单号"] == "UAS1"
+    assert "24" not in fields["判责结果"]           # 这条金额不是 24
+    assert "77.43" in fields["判责结果"]            # 格式化简短结论含金额
+    assert "平台商家10:90" in fields["判责结果"]
+    assert fields["提交结果类型"] == "同意"          # 提交（不是提价）
+    assert fields["满足期望类型"] == "完全满足"
+    assert "【判责结论】" in fields["判责报告"]       # 报告含 judgment_summary
+    assert "【门店画像】" in fields["判责报告"]       # 报告含 judgment_basis
 
 
 def test_build_result_fields_defaults():
-    fields = fb.build_result_fields("UAS1", {})
-    assert fields["判责理由"] == ""
-    assert fields["提价结果类型"] == "需人工"
+    fields = fb.build_result_fields("UAS1", {"action": "需人工"})
+    assert fields["提交结果类型"] == "需人工"         # 提交（不是提价）
+    assert fields["满足期望类型"] == "需人工"
