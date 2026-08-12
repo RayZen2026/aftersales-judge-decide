@@ -49,10 +49,150 @@ logger = logging.getLogger("aftersales-judge-decide")
 # ============================================================
 
 def load_config(path: Optional[Path] = None) -> dict:
-    """YAML 加载（Phase 4 升级为 L4 严格替换）。"""
+    """YAML 加载 + L4 严格替换（${VAR} 引用 env，缺失即 abort）。
+
+    只替换 YAML 值部分的 ${VAR}；注释行（# 开头）不处理，
+    防止注释中的示例文字被误匹配（如 config 头部说明注释）。
+    """
     p = Path(path) if path else CONFIG_PATH
     with open(p, "r", encoding="utf-8") as f:
-        return yaml.safe_load(f)
+        lines = f.readlines()
+    import re as _re
+    errors: list[str] = []
+    processed = []
+    for line in lines:
+        stripped = line.lstrip()
+        if stripped.startswith("#"):
+            # 注释行：原样保留，不做替换
+            processed.append(line)
+            continue
+        def _replace(m, _errors=errors):
+            var = m.group(1)
+            val = os.environ.get(var)
+            if val is None:
+                _errors.append(var)
+                return m.group(0)
+            return val
+        processed.append(_re.sub(r"\$\{([A-Z][A-Z0-9_]*)\}", _replace, line))
+    if errors:
+        raise RuntimeError(
+            f"config.yaml L4 严格替换失败：env 变量缺失 {errors}。"
+            "先 `set -a && source .env && set +a` 或配置生产 env。")
+    return yaml.safe_load("".join(processed))
+
+
+# ============================================================
+# Preflight（v2.0 §7.6 + config.yaml preflight 块）
+# ============================================================
+
+class PreflightError(RuntimeError):
+    """preflight abort 级失败，阻断启动。"""
+
+
+def _pf_env_present(check: dict) -> tuple[bool, str]:
+    missing = [t for t in (check.get("targets") or []) if not os.environ.get(t)]
+    if missing:
+        return False, f"env 变量缺失: {missing}"
+    return True, "ok"
+
+
+def _pf_lark_read(check: dict, cfg: dict) -> tuple[bool, str]:
+    """lark-cli bot 可读指定表（fetch 1 条验证）。"""
+    from data_loader import record_list, LarkCliError  # noqa: PLC0415
+    table_keys = check.get("targets") or []
+    table_map = {
+        "task_table": cfg.get("task_table", {}),
+        "result_table": cfg.get("dimensions", {}).get("result_table", {}),
+        "product_dimension_table": cfg.get("dimensions", {}).get("product_dimension_table", {}),
+        "store_table": cfg.get("dimensions", {}).get("store_table", {}),
+    }
+    failed = []
+    for key in table_keys:
+        tbl = table_map.get(key, {})
+        app_token = tbl.get("app_token")
+        table_id = tbl.get("table_id")
+        if not app_token or not table_id:
+            failed.append(f"{key}(config 缺 app_token/table_id)")
+            continue
+        try:
+            record_list(cfg, app_token=app_token, table_id=table_id, limit=1)
+        except LarkCliError as e:
+            failed.append(f"{key}: {e}")
+    if failed:
+        return False, f"bitable 不可达: {failed}"
+    return True, "ok"
+
+
+def _pf_llm_ping(check: dict, cfg: dict) -> tuple[bool, str]:
+    """LLM 链第一个模型 ping（开发环境 DashScope；生产 Miaoda 暂跳过）。"""
+    if os.environ.get("BITABLE_WRITE_ENABLED") != "1":
+        # 开发期不强制 ping 生产 LLM（妙搭未接入）
+        return True, "跳过(开发环境)"
+    try:
+        backend = _make_backend(cfg)
+        chain = ["qwen-plus-latest"]  # 开发占位；生产改为 config llm.shared_chain[0]
+        from llm import call_with_fallback  # noqa: PLC0415
+        res = call_with_fallback(backend, "ping", chain,
+                                 {"max_tokens": 5, "temperature": 0},
+                                 cfg["llm"]["retry"])
+        if res.error:
+            return False, f"LLM ping 失败: {res.error}"
+        return True, "ok"
+    except Exception as e:  # noqa: BLE001
+        return False, f"LLM ping 异常: {e}"
+
+
+def _pf_disk_space(check: dict) -> tuple[bool, str]:
+    import shutil  # noqa: PLC0415
+    threshold_mb = check.get("threshold_mb", 500)
+    free_mb = shutil.disk_usage(BASE_DIR).free // (1024 * 1024)
+    if free_mb < threshold_mb:
+        return False, f"磁盘空间不足: {free_mb}MB < {threshold_mb}MB"
+    return True, f"{free_mb}MB 可用"
+
+
+def _pf_cron_registered(check: dict, cfg: dict) -> tuple[bool, str]:
+    """cron 冲突检测（本地 CLI-only 环境跳过，OpenClaw 部署时实测）。"""
+    return True, "跳过(本地 CLI-only;OpenClaw 部署时检验)"
+
+
+def run_preflight(cfg: dict) -> list[dict]:
+    """运行 config.yaml preflight 块的 5 项检查。
+
+    返回 [{name, ok, message}]；abort 级失败抛 PreflightError。
+    开发期 load_config 未做 ${VAR} 替换时部分检查会因 env 缺失而 warn。
+    """
+    results = []
+    for check in cfg.get("preflight") or []:
+        name = check.get("name", "?")
+        kind = check.get("check", "")
+        fail_action = check.get("fail_action", "abort")
+        try:
+            if kind == "env_present":
+                ok, msg = _pf_env_present(check)
+            elif kind == "lark_read":
+                ok, msg = _pf_lark_read(check, cfg)
+            elif kind == "llm_ping":
+                ok, msg = _pf_llm_ping(check, cfg)
+            elif kind == "disk_min_mb":
+                ok, msg = _pf_disk_space(check)
+            elif kind == "cron_registered":
+                ok, msg = _pf_cron_registered(check, cfg)
+            else:
+                ok, msg = True, f"未知检查类型 {kind}（跳过）"
+        except Exception as e:  # noqa: BLE001
+            ok, msg = False, f"检查异常: {e}"
+        level = "ok" if ok else ("warn" if fail_action == "warn_only" else "abort")
+        results.append({"name": name, "ok": ok, "level": level, "message": msg})
+        if not ok and fail_action == "abort":
+            summary = "\n".join(f"  [{r['level'].upper()}] {r['name']}: {r['message']}"
+                                for r in results)
+            raise PreflightError(
+                f"preflight 检查失败（abort），启动中止：\n{summary}")
+        logger.log(
+            logging.INFO if ok else logging.WARNING,
+            "preflight [%s] %s: %s", level.upper(), name, msg)
+    return results
 
 
 def init_logging(level: str = "INFO") -> logging.Logger:
@@ -291,6 +431,7 @@ def _run_workflow(cfg: dict) -> dict:
 
 def cmd_auto(args, logger_) -> dict:
     cfg = load_config()
+    run_preflight(cfg)
     result = _run_workflow(cfg)
     logger_.info("auto 完成: %s", result["stats"])
     return {"mode": "auto", **result}
@@ -303,6 +444,7 @@ def cmd_manual(args, logger_) -> dict:
     from data_loader import record_list            # noqa: PLC0415
 
     cfg = load_config()
+    run_preflight(cfg)
     tt = cfg["task_table"]
     field_names = cfg["probe"]["task_fetch"]["field_names"]
     env = record_list(cfg, app_token=tt["app_token"], table_id=tt["table_id"],

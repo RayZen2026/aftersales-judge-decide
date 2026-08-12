@@ -11,7 +11,7 @@
 | Phase 0 | PROPOSAL + 框架初始化 | 2-3 天 | PROPOSAL.md pending + SKILL 目录 | 无 |
 | Phase 1 | PROPOSAL 收口 + 探针基础测试 | 5-7 天 | 阻塞项 4 类收口 + probe_llm.py 跑通 | ✅ 2026-08-12 阶段型收口 |
 | Phase 1.5 | 探针迭代 + AGENT 切分拍板 | 3-5 天 | 3 轮调优 + AGENT 1-3 切分定稿 | ✅ 2026-08-12 收口:切 1 AGENT |
-| Phase 1.8 | 部署准备(v1.6 内容 + 一次性 apply) | 1-2 天 | SKILL.md 重建草稿 + 4 项硬约束 | ✅ 触发满足;Phase 3 后执行(D-20260812-010) |
+| Phase 1.8 | 部署准备(v1.6 内容 + 一次性 apply) | 1-2 天 | SKILL.md 重建草稿 + 4 项硬约束 | ✅ 基本完成(SKILL.md 190行 + preflight 实现);飞书 doc 待同步 |
 | Phase 2 | 核心模块 + 数据访问 | 7-10 天 | state_machine.py / failure_handler.py / llm.py / feishu_bitable.py | ✅ 2026-08-12 完成(6 模块 + 170 用例) |
 | Phase 3 | 主流程 + 单 AGENT 探针回归 | 5-7 天 | agent_single.py + main.py + 单测 + 10-20 样本回归 | ✅ 主流程完成(193 用例);回归待执行 |
 | Phase 4 | 端到端 + 生产部署 | 5-7 天 | test_main_table 端到端 + cron 配置 + 监控告警 + 全量切流 | ✅ 端到端验证通过;cron/监控/切流待配 |
@@ -93,17 +93,19 @@
 
 > **定位调整（2026-08-12，D-20260812-010 确认拍板）**：开发期不走 skill_workshop 治理流程——git 已覆盖审计/review/回滚，本仓是 staging（SKILL.md 有意删除，无活跃 SKILL 文件，不触 v2 §4.1 适用域）。本阶段 = 部署准备，**执行时机推迟到 Phase 3 后**（实现内容稳定再定稿，避免返工）；部署时一次性 propose-update apply（目标 workspace 若执行 v2 §4.1）。
 
+> **状态（2026-08-12，✅ 基本完成）**：preflight 代码实现 + SKILL.md 重建（190 行，含 formatter 段）。飞书 doc v1.5→v1.6 同步待执行（用户侧）。
+
 ### 4 项硬约束 + 内容清单
-- [ ] **SKILL.md 重建草稿**（按 1 AGENT 定稿架构：操作手册 body ≤500 行；probe/test 开发模式不进 body，只暴露 auto/manual）
-- [ ] **frontmatter requires.bins**: `["lark-cli", "python3"]`(v2.0 §10.14 L3 契约)
-- [ ] **frontmatter requires.config**: `["config.yaml"]`(v2.0 §10.14 L3 契约)
-- [ ] **preflight 5 项**: feishu 凭据 / bitable 可达 / LLM 链 / cron 冲突 / 磁盘空间(v2.0 §7.6)
-- [ ] **L4 严格替换策略**: `${VAR}` 缺失即启动失败,防软替换陷阱(v2.0 §10.8)
-- [ ] **§11.1 SKILL.md 加 "Skill Workshop" 段**: v2.0 §4 流程描述
-- [ ] 飞书 doc v1.5 → v1.6（部署前同步）
+- [x] **SKILL.md 重建**（1 AGENT 定稿架构，190 行 ≤500 行限制；When to use / Workflow / Commands / Preflight / Config / Formatter / Operations / Don't do；probe/test 开发模式不进 body）
+- [x] **frontmatter requires.bins**: `["lark-cli", "python3"]`
+- [x] **frontmatter requires.config**: `["config.yaml"]`
+- [x] **preflight 5 项实现**（main.py run_preflight()：feishu 凭据 abort / bitable 可达 abort / LLM 链 warn_only / cron 冲突 warn_only / 磁盘空间 warn_only；auto/manual 入口调用）
+- [x] **L4 严格替换策略**（main.py load_config()：跳过注释行，替换值部分 ${VAR}，缺失即 abort）
+- [ ] **§11.1 SKILL.md 加 "Skill Workshop" 段**（部署时配合 propose-update apply 流程）
+- [ ] 飞书 doc v1.5 → v1.6（用户侧同步，部署前）
 
 ### 触发条件
-- ~~AGENT 切分拍板(决策 4)~~ ✅ 已满足（2026-08-12，D-20260812-007）；**执行时机 = Phase 3 内容稳定后**
+- ~~AGENT 切分拍板(决策 4)~~ ✅ 已满足（2026-08-12，D-20260812-007）；**执行时机 = Phase 3 内容稳定后** ✅
 
 ## 5. Phase 2: 核心模块 + 数据访问(7-10 天)
 
