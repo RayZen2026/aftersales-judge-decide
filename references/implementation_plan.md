@@ -40,19 +40,20 @@
 ## 2. Phase 1: PROPOSAL 收口 + 探针基础测试(5-7 天)
 
 ### 任务清单
-- [ ] 确认 review PROPOSAL → 提供 4 类阻塞数据
-- [ ] 维度表 metadata 收口(商品维度统计表 + 门店表 app_token / table_id / 字段映射)
-- [ ] 真实样本数据 10-20 条准备
-- [ ] 评估标准定稿(准确率 / 一致性 / latency 阈值)
-- [ ] probe_llm.py 框架(复用解析层骨架,subprocess wrapper DRY)+ config.yaml 补 `probe` 块(output_dir / test_scenarios / evaluation_rubric,实物暂无)
-- [ ] **T1.5 1 AGENT 完整流程探针**(5-10 样本)——**1 vs 3 决策基线**(设计方案 §0.1:探针通过 → 改 1 AGENT)
-- [ ] **T1.6 3 AGENT 单 AGENT 探针**(5-10 样本/AGENT,3 AGENT 是当前基线)
-- [ ] **T1.7 1 vs 3 决策门**:1 AGENT 全部达标 → 切 1 AGENT;任一不达标 → 保持 3 AGENT(判定标准 `assets/eval/eval_standard.md`,决策规则 `references/architecture.md` §3.5)
+- [ ] 确认 review PROPOSAL → 提供 4 类阻塞数据（进行中：metadata 已收口，样本 live 就绪，人工标注未就绪）
+- [x] 维度表 metadata 收口(商品维度统计表 + 门店表 app_token / table_id / 字段映射) —— 2026-08-12 实查收口：6 表全部可读，config.yaml 验证；门店分层规则 table_id 笔误修复（tbllJ5aMajBhYRjIs → tbllJ5aMjBhYRjIs）
+- [x] **T1.4a 数据层探针版（补遗，原计划遗漏）**：`scripts/data_loader.py` —— live lark-cli + CSV 双来源 → 统一 SampleSet schema；维度 JOIN（商品按商品id+订单日期 日期级匹配 / 门店快照按店铺id）+ apply_tier 集成（submodules/store-tier-rules import）；Phase 2 feishu_bitable.py 复用同一数据契约，只换 fetch 实现
+- [ ] 真实样本数据 10-20 条准备（Round 1：live 拉取已通；Round 2：人工标注 CSV → expected 填充）
+- [ ] 评估标准定稿(准确率 / 一致性 / latency 阈值)（Round 1 只跑格式/一致性/latency；准确率口径 Round 2，2026-08-12 确认拍板）
+- [x] probe_llm.py 框架(Phase 1 实质实现: DashScope qwen-plus-latest 占位全链 + jinja2 渲染 + JSON 提取/schema 校验 + 报告对齐 eval_standard §8) + config.yaml 补 `probe` 块(output_dir / test_scenarios / evaluation_rubric / llm / task_fetch / task_field_mapping / store_tier)
+- [ ] **T1.5 1 AGENT 完整流程探针**(5-10 样本)——**1 vs 3 决策基线**(设计方案 §0.1:探针通过 → 改 1 AGENT)；Round 1 = 端到端跑通(格式/一致性/latency)
+- [ ] **T1.6 3 AGENT 单 AGENT 探针**(5-10 样本/AGENT,3 AGENT 是当前基线)；Round 1 = 端到端跑通
+- [ ] **T1.7 1 vs 3 决策门**:1 AGENT 全部达标 → 切 1 AGENT;任一不达标 → 保持 3 AGENT(判定标准 `assets/eval/eval_standard.md`,决策规则 `references/architecture.md` §3.5)——推迟 Round 2(需人工标注准确率)
 
 ### 探针参数
 - 样本量: 5-10(快速验证,vs Phase 3 回归用 10-20)
-- 模型: 4+2 链占位测
-- prompt: 业务 prompt 模板占位版(`assets/agent{1,2,3}_prompt_template.j2`)
+- 模型: DashScope qwen-plus-latest 单模型占位全链(2026-08-12 确认拍板;本地无妙搭,4+2 降级链生产才测)
+- prompt: 业务 prompt 模板占位版(`assets/agent{1,2,3}_prompt_template.j2` + `agent_single_prompt_template.j2` 融合模板)
 
 ### 阻塞项
 - 4 类阻塞数据(确认 review 时一次性提供)
@@ -151,10 +152,12 @@
 
 ## 10. 阻塞项完整清单(确认 review 时一次性提供)
 
+> 2026-08-12 状态更新：#1/#2 已实查收口，#3/#4 部分就绪（Round 1 跑通不依赖，Round 2 需要）。
+
 | # | 阻塞项 | 阻塞哪个 Task | 状态 |
 |---|---|---|---|
-| 1 | 商品维度统计表 metadata | Phase 1.1 维度数据 JOIN | ⏳ 待确认 |
-| 2 | 门店表 metadata | Phase 1.1 维度数据 JOIN | ⏳ 待确认 |
-| 3 | 真实样本 10-20 条 | Phase 1.2 探针基础测试 | ⏳ 待确认 |
-| 4 | 评估标准定稿 | Phase 1.2 探针基础测试 | ⏳ 待确认 |
+| 1 | 商品维度统计表 metadata | Phase 1.1 维度数据 JOIN | ✅ 2026-08-12 实查收口 |
+| 2 | 门店表 metadata | Phase 1.1 维度数据 JOIN | ✅ 2026-08-12 实查收口 |
+| 3 | 真实样本 10-20 条 | Phase 1.2 探针基础测试 | 🟡 部分就绪(live 拉取已通;人工标注 CSV Round 2) |
+| 4 | 评估标准定稿 | Phase 1.2 探针基础测试 | 🟡 部分就绪(Round 1 只跑格式/一致性/latency;准确率口径 Round 2) |
 | 5 | AGENT 切分定稿(1 vs 3 决策 + 边界调优,Phase 1.5 探针后)| Phase 1.8 v1.6 doc 升版 | ⏳ Phase 1.5 探针后 |

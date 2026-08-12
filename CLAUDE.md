@@ -44,6 +44,8 @@ aftersales-judge-decide/
 ├── .nvmrc / .python-version / requirements.txt / package.json / .env.example
 ├── assets/
 │   ├── agent{1,2,3}_prompt_template.j2    # 实物在 assets/ 根，不建 templates/ 子目录
+│   ├── agent_single_prompt_template.j2    # 1-AGENT 融合模板（T1.5 探针用）
+│   ├── field_types.json                   # 字段类型快照（data_loader dump，CSV coerce 基线）
 │   └── eval/eval_standard.md
 ├── references/
 │   ├── architecture.md         # 流程图/抢锁矩阵/9 类失败/1 vs 3 决策规则
@@ -52,12 +54,15 @@ aftersales-judge-decide/
 │   └── dev_env_setup.md        # 本地环境安装指南
 ├── scripts/
 │   ├── main.py                 # 主流程 + cron 入口（auto/manual/probe/test）
-│   └── probe_llm.py            # 应用层探针
-├── tests/                  # 空目录，待 Phase 1.10 补框架
+│   ├── probe_llm.py            # 应用层探针（DashScope qwen-plus-latest 占位全链）
+│   └── data_loader.py          # 数据层探针版（live lark-cli/CSV → 统一 SampleSet）
+├── submodules/             # 依赖 SKILL 开发拷贝（gitignore；部署路径经 STORE_TIER_RULES_DIR 注入，见 README）
+│   └── store-tier-rules/   # 门店分层（只 import apply_tier 纯函数）
+├── tests/                  # pytest 首批（envelope/coerce/JOIN/correction/CSV/tier 降级）
 └── trash/                  # 归档（gitignore）：源文档 PDF/规划 + env_requirements.md
 ```
 
-不建的子目录：`templates/`、`policies/`、`test_data/`、`schemas/`（实物演化路径不在此；`test_data/` 等真实样本到位再议，实物路径为 `assets/eval/samples_v1.json`）。
+子目录按需创建：根据实际需要建，不需要即不创建（不预建空目录）。
 
 ---
 
@@ -85,7 +90,7 @@ aftersales-judge-decide/
 | 门店分层规则（AST）| 只读消费 | `HGDzb2h7MaydFxsqlyAcCpALnB1` | `tbllJ5aMjBhYRjIs` |
 | 升级售后判责规则（AST）| 只读消费 | `HGDzb2h7MaydFxsqlyAcCpALnB1` | `tblty9QJT2g7caeg` |
 
-table_id 一律以 `lark-cli` 实查为准。已知待修：`config.yaml` 中门店分层规则 table_id 有笔误（多一字母，实测 not_found），Phase 1 修复。
+table_id 一律以 `lark-cli` 实查为准。2026-08-12 已修复：`config.yaml` 门店分层规则 table_id 笔误（`tbllJ5aMajBhYRjIs` → `tbllJ5aMjBhYRjIs`，实查验证）。
 
 ---
 
