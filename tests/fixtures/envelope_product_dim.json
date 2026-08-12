@@ -1,0 +1,14 @@
+{
+  "data": [
+    [20712027, "2026-07-30T08:00:00.000+08:00", 0.11, 0.05],
+    [20712027, "2026-08-01T08:00:00.000+08:00", 0.12, 0.06],
+    [20712027, "2026-08-02T08:00:00.000+08:00", 0.13, 0.07]
+  ],
+  "field_id_list": ["fld6XaSkNv", "fldvOOyVdL", "fldSYNTH001", "fldSYNTH002"],
+  "field_type_list": ["number", "datetime", "number", "formula"],
+  "fields": ["商品id", "日期", "近7日商品售后赔付率", "商品占同品类比例"],
+  "has_more": false,
+  "record_id_list": ["recSYNTHP000000001", "recSYNTHP000000002", "recSYNTHP000000003"],
+  "rev": 1,
+  "timezone": "Asia/Shanghai"
+}

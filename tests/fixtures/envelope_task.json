@@ -1,0 +1,88 @@
+{
+  "ok": true,
+  "identity": "bot",
+  "data": {
+    "data": [
+      [
+        "UAS900000000000000001",
+        "退货或者赔付金额",
+        77.43,
+        77.43,
+        "处理中升级售后单",
+        "黄桃到货大部分有坏的，诉求赔付77.43元",
+        "退货或者赔付77.43",
+        null,
+        1,
+        0,
+        0,
+        0,
+        0,
+        1,
+        1,
+        2,
+        "-1",
+        "2026-08-01T00:00:00.000+08:00",
+        20712027,
+        "山东黄桃大果21斤A级",
+        null,
+        164354,
+        "0",
+        "未处理"
+      ],
+      [
+        "UAS900000000000000002",
+        "退货",
+        null,
+        241.02,
+        "处理中升级售后单",
+        "口感不对没有味道，诉求3件退货",
+        "诉求3件退货",
+        "商品问题",
+        1,
+        0,
+        0,
+        0,
+        0,
+        1,
+        1,
+        2,
+        "0",
+        "2026-08-02T00:00:00.000+08:00",
+        20712027,
+        "山东黄桃大果21斤A级",
+        null,
+        1002446,
+        "0",
+        "未处理"
+      ]
+    ],
+    "field_id_list": [
+      "fld5zIP7VN", "fldxDQnNyE", "fldgQkDwGD", "fldsviXbus", "fldP0kVZm1",
+      "fldrwRcngk", "fldZ3VrS2H", "fldyPWJGnA", "fldKV4ZEaE", "fldX23DjlP",
+      "fldUXp1BPA", "fldAd49C55", "fld6rfaAgc", "fld46KrcQu", "fldH0zTCHs",
+      "fldA8gUOuf", "fldKfKBloR", "fldinz10mV", "fldO5pHYLP", "fld9PHO9cE",
+      "fldFvRcTiM", "fldhrYo0gc", "fldaSJtufi", "fldUmAgcBk"
+    ],
+    "field_type_list": [
+      "text", "text", "number", "number", "text",
+      "text", "text", "text", "number", "number",
+      "number", "number", "number", "number", "number",
+      "number", "formula", "datetime", "number", "text",
+      "text", "number", "formula", "text"
+    ],
+    "fields": [
+      "升级售后单号", "诉求类型", "诉求赔付金额", "商品实付金额", "升级售后类型",
+      "问题描述", "客户诉求", "问题类型", "是否商家问题", "是否平台问题",
+      "是否物流问题", "是否代理人问题", "是否门店问题", "是否严重品质问题", "举证视频数量",
+      "举证图片数量", "升级售后提交间隔天数", "订单日期", "商品id", "商品名称",
+      "商品等级", "店铺ID", "是否全品类商家", "处理状态"
+    ],
+    "has_more": false,
+    "record_id_list": [
+      "recSYNTH000000001",
+      "recSYNTH000000002"
+    ],
+    "rev": 1,
+    "timezone": "Asia/Shanghai"
+  }
+}

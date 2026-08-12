@@ -15,6 +15,10 @@
   ```json
   {{ dimension_data | tojson(indent=2) }}
   ```
+- 判责规则 AST(JSON, 按优先级降序, 仅参考不机械执行):
+  ```json
+  {{ judgment_rules | default([]) | tojson(indent=2) }}
+  ```
 
 # 输出(JSON,严格按 schema)
 
@@ -34,7 +38,7 @@
 
 1. 阅读 AGENT 1 输出(门店期望)
 2. 阅读维度数据(关键判责依据)
-3. 检索判责规则,判定美团/商家承担比例
+3. 阅读上方注入的判责规则 AST,按优先级匹配,判定美团/商家承担比例
 4. 输出 JSON(美团% + 商家% = 100%)
 
 # 约束
@@ -57,4 +61,5 @@
 # 探针调整日志
 
 - 2026-08-08 v0.1.0: 占位版初稿,Phase 0 提交
+- 2026-08-12: 补判责规则 AST 注入变量 judgment_rules(config ast_rules.aftersales_judgment.consume=llm_prompt_injection)
 - 待 Phase 1.5 探针后按需调整 prompt 措辞/字段

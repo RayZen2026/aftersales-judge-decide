@@ -260,8 +260,8 @@ ast_rules:
   store_tier:                              # 阶段 2 batch 消费
     fetch:                                  # 应用层自己 lark-cli 拉
       app_token: HGDzb2h7MaydFxsqlyAcCpALnB1
-      table_id: tbllJ5aMajBhYRjIs
-      source_url: https://bggc.feishu.cn/wiki/QtV8wiiSuikve7kOzaKcS4tEnXb?table=tbllJ5aMajBhYRjIs&view=vewQEBYm73
+      table_id: tbllJ5aMjBhYRjIs           # 2026-08-12 修复笔误（旧值 tbllJ5aMajBhYRjIs 实测 not_found）
+      source_url: https://bggc.feishu.cn/wiki/QtV8wiiSuikve7kOzaKcS4tEnXb?table=tbllJ5aMjBhYRjIs&view=vewQEBYm73
       sort:
         - field: 日期
           field_id: fldJngjYMN
@@ -403,3 +403,64 @@ preflight:
   check: disk_min_mb
   threshold_mb: 500
   fail_action: warn_only
+
+# ===== 探针（Phase 1 开发模式，不进 SKILL.md body）=====
+# 2026-08-12 拍板：Round 1 = 端到端跑通（格式/一致性/latency），准确率 Round 2
+# LLM = DashScope qwen-plus-latest 单模型占位全链（本地无妙搭；生产 4+2 链见 llm 块）
+probe:
+  output_dir: probes                        # env PROBE_OUTPUT_DIR 优先
+  evaluation_rubric: assets/eval/eval_standard.md
+  test_scenarios: []                        # Round 2 填（场景化样本分组）
+  llm:
+    provider: dashscope
+    base_url: https://dashscope.aliyuncs.com/compatible-mode/v1
+    model: qwen-plus-latest                 # 本账号仅 latest 别名可用（dev_env_setup §9.2）
+    api_key_env: DASHSCOPE_API_KEY
+    max_tokens: 8192                        # 不用生产 30000（qwen 输出上限风险）；生产值在 llm.params，不动
+    temperature: 0.1
+    timeout_seconds: 60
+    retry:
+      max: 3
+      backoff_seconds: [0.5, 1, 2]
+  task_fetch:
+    limit_default: 5
+    limit_max: 10
+    field_names:                            # 任务表 25 读取字段（live 投影；≠ task_table.select_fields 23 写回字段）
+    - 升级售后单号
+    - 诉求类型
+    - 诉求赔付金额
+    - 商品实付金额
+    - 升级售后类型
+    - 已处理意见（客服组长处理意见）
+    - 问题描述
+    - 客户诉求
+    - 问题类型
+    - 是否商家问题
+    - 是否平台问题
+    - 是否物流问题
+    - 是否代理人问题
+    - 是否门店问题
+    - 是否严重品质问题
+    - 举证视频数量
+    - 举证图片数量
+    - 升级售后提交间隔天数
+    - 订单日期
+    - 商品id
+    - 商品名称
+    - 商品等级
+    - 店铺ID
+    - 是否全品类商家
+    - 处理状态
+  task_field_mapping:                       # 任务表字段 → 模板变量（渲染层映射，显式可审计）
+    appeal_content_fields:                  # 拼接为 appeal_content（None 段跳过）
+    - 问题描述
+    - 客户诉求
+    - 已处理意见（客服组长处理意见）
+    appeal_type: 诉求类型
+    appeal_amount: 诉求赔付金额
+    aftersales_type: 升级售后类型
+  store_tier:
+    scripts_dir_default: submodules/store-tier-rules/scripts   # env STORE_TIER_RULES_DIR 覆盖（部署路径不同，见 README）
+    degrade_on_failure: true                # 分层失败 → store_tier=null + join_meta 记 reason，不中断探针
+  consistency_runs: 3
+  csv_header_aliases: {}                    # CSV 表头名别名（飞书导出表头漂移时补）

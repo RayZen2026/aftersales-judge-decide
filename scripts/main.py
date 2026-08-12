@@ -244,10 +244,14 @@ def cmd_test(args, logger):
 
 
 def cmd_probe(args, logger):
-    """probe 模式: 探针基础测试(Phase 1.5-1.7)"""
-    logger.info(f"probe mode (占位, 待 Phase 1.5 真实实现)")
-    # TODO Phase 1.5: 探针框架(沿用解析层 probe_llm.py 骨架)
-    return {"mode": "probe", "status": "占位"}
+    """probe 模式: 探针基础测试(Phase 1.5-1.7)
+
+    Round 1 = 端到端跑通(格式/一致性/latency);准确率 + 1 vs 3 决策门 Round 2。
+    委托 probe_llm.run_probe(延迟 import 避免循环依赖: probe_llm 顶层 from main import allocate_correction)。
+    """
+    import probe_llm  # noqa: PLC0415
+    logger.info(f"probe mode={args.probe_mode} runs={args.runs} samples_file={args.samples_file}")
+    return probe_llm.run_probe(args, load_config(), logger)
 
 
 # ============================================================
@@ -276,8 +280,13 @@ def main():
 
     # probe (Phase 1.5 探针)
     p_probe = subparsers.add_parser("probe", help="探针基础测试")
-    p_probe.add_argument("--probe-agents", default="1,3", help="探针 AGENT 切分对比")
-    p_probe.add_argument("--samples", type=int, default=5, help="样本数")
+    p_probe.add_argument("--probe-mode", choices=["1agent", "3agent", "both"],
+                         default="both", help="1agent=T1.5 完整流程 / 3agent=T1.6 串行链")
+    p_probe.add_argument("--samples-file", default=None,
+                         help="data_loader 产物 SampleSet JSON；缺省现场 live 拉取")
+    p_probe.add_argument("--samples", type=int, default=None, help="样本数上限")
+    p_probe.add_argument("--runs", type=int, default=None,
+                         help="一致性次数（默认 config probe.consistency_runs）")
 
     args = parser.parse_args()
     logger = init_logging()
