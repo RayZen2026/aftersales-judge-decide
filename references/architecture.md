@@ -31,12 +31,13 @@
     └─ 锁成功
          ↓
        字段匹配检验(per-item)
-         ├─ 失败 → 飞书通知任锐(24h 去重)→ 抢锁释放 → 跳过本条
+         ├─ 失败 → 飞书通知确认(24h 去重)→ 抢锁释放 → 跳过本条
          └─ 成功
               ↓
-            [N 个 AGENT 串行调用]
-            (N=3 占位:AGENT 1 门店期望判定
-                  → AGENT 2 承担方比例判责
+            [AGENT 串行调用]
+            (当前基线 = 3 AGENT(设计源 doc 8.3 拍板),1 vs 3 探针决定是否切 1:
+                  AGENT 1 门店期望判定
+                  → AGENT 2 承担方比例判责(AST 规则仅 prompt 引用)
                   → 分配校正(纯数学,不调 LLM)
                   → AGENT 3 综合判责意见)
             ↓
@@ -78,12 +79,12 @@ WHERE 处理状态 = '已处理-处理中' AND 任务处理时间 < now() - 5min
 WHERE 处理状态 IN ('已处理-处理中', '已处理-失败')
 ```
 
-> **v1.4 doc 拍板**: stale_timeout=5min(LCE-20260808-005,v1.4 doc §4.1)
-> 设计 doc v1.1 之前是 30min,v1.4 doc 收敛到 5min(bitable 无事务 + 单 JOB 单 Task 兜底)。
+> stale_timeout = 5min：bitable 无事务，靠单 JOB 单 Task + stale 重抢兜底。
 
 ## 3. AGENT 串行调用规则
 
-- **N 个 AGENT 串行调用**(不并发),N=3 占位,待探针回填
+- **当前基线 = 3 AGENT 串行调用**(不并发,设计源 doc 8.3 拍板,**不是占位**)
+- **1 vs 3 探针目标**(D-20260807-004,确认拍板):探针通过 → 改 1 AGENT;不通过 → 保持 3 AGENT(二选一,非 1/2/3/5,决策规则见 §3.5)
 - 失败重试**独立计数**(AGENT 1 重试失败不影响 AGENT 2 状态)
 - 9 类失败处理**仅在最终 AGENT 后执行**
 
@@ -92,14 +93,14 @@ WHERE 处理状态 IN ('已处理-处理中', '已处理-失败')
 - **输入**: 升级售后单 + JOIN 后的维度数据
 - **输出**: 门店期望判定结果(text,如 "应赔付 200 元" / "应退货")
 - **LLM 调**: 共享链(glm-5.1 → qwen-3.7-plus → doubao-seed-2.0-pro → minimax-m3)
-- **prompt 模板**: `templates/agent1_prompt_template.j2`(占位,Phase 1 探针调优)
+- **prompt 模板**: `assets/agent1_prompt_template.j2`(占位,Phase 1 探针调优)
 
 ### 3.2 AGENT 2:承担方比例判责
 
-- **输入**: 升级售后单 + JOIN 后的维度数据 + AGENT 1 输出
+- **输入**: 升级售后单 + JOIN 后的维度数据 + AGENT 1 输出 + **判责规则 AST**(解析层产物,按优先级遍历,**仅 prompt 引用**——LLM 参考条件摘要 + 调整动作摘要 + 自由判断,不在分配校正阶段机械执行)
 - **输出**: 承担方比例(如 "美团 30% / 商家 70%")
 - **LLM 调**: 共享链(同 AGENT 1)
-- **prompt 模板**: `templates/agent2_prompt_template.j2`(占位)
+- **prompt 模板**: `assets/agent2_prompt_template.j2`(占位)
 
 ### 3.3 分配校正(纯数学)
 
@@ -112,7 +113,15 @@ WHERE 处理状态 IN ('已处理-处理中', '已处理-失败')
 - **输入**: 升级售后单 + JOIN 后的维度数据 + AGENT 1 输出 + AGENT 2 输出
 - **输出**: 综合判责意见(text,含 9 类失败类型标记)
 - **LLM 调**: **独立链**(doubao-seed-2.0-pro → minimax-m3)— 综合性任务不需 reasoning 强模型
-- **prompt 模板**: `templates/agent3_prompt_template.j2`(占位)
+- **prompt 模板**: `assets/agent3_prompt_template.j2`(占位)
+
+### 3.5 1 vs 3 探针决策规则(D-20260807-004,确认拍板)
+
+- **决策规则**:1 AGENT 完整流程探针(Phase 1.5,5-10 样本)达标 → **改 1 AGENT**;不达标 → **保持 3 AGENT**
+- **判定标准**(`assets/eval/eval_standard.md`):准确率 ≥ 85% / 一致性不一致率 ≤ 5% / latency P95 / 格式校验 100%
+- **切 1 AGENT 的影响面**(锁在 LLM 调用层,设计方案无大调整):3 次串行调用合并为 1 次(prompt 融合 3 模板职责)+ retry 计数改单调用 + AGENT 3 独立链失效改共享链(⏳ 探针拍板项)
+- **切 1 AGENT 不变项**:5 状态机 / 9 类失败 / 抢锁 / 写表规则 / cron / 通知 / 分配校正(纯数学)/ 门店分层 AST(batch)
+- 业务背景与完整决策表见 `references/business_context.md` §5
 
 ## 4. 关键决策(D-20260806-001 ~ 013 + D-20260807-001 ~ 004)
 
@@ -132,22 +141,12 @@ WHERE 处理状态 IN ('已处理-处理中', '已处理-失败')
 | D-20260807-001 | 探针先行原则 | 框架(skeleton)与探针支撑准备并行,探针不阻塞框架 |
 | D-20260807-002 | 探针 3 层次 | 模型层 / 业务 prompt 层 / AGENT 架构层 |
 | D-20260807-003 | 探针与 llm.py 边界 | 共享 subprocess wrapper(DRY),逻辑零耦合(不 import llm.py) |
-| D-20260807-004 | N AGENT 占位 | 当前 3 AGENT 是占位,待 AGENT 架构层探针回填 N |
+| D-20260807-004 | 1 vs 3 探针目标 | 当前基线 = 3 AGENT 串行 + 3 LLM;探针通过 → 改 1 AGENT,不通过 → 保持 3(确认拍板,二选一,非 1/2/3/5)|
 
 ## 5. 流程图原则(强规则,v2.0 §10.9)
 
 - 流程图**不细化**到具体数字 / 决策编号 / 字段数
-- 画板节点只描述 **WHAT** 和 **ORDER**,不描述 **HOW**
-- 反例:删除"决策 6: 2 维度表 × 20-40 字段"、config.yaml 4 项具体值
-- 正确:画板写"维度数据 JOIN"、"读 config.yaml 业务参数"即可
-- 细节放 doc 文字(4.2.3 末尾配置摘录 = 正确位置)
-- **新增**:流程图不预设 AGENT 数量(N 是 doc 层级 placeholder,探针回填)
+- 画板节点只描述 **WHAT** 和 **ORDER**,不描述 **HOW**(节点写"维度数据 JOIN"、"读 config.yaml 业务参数",不写"2 维度表 × 20-40 字段"、config.yaml 具体值)
+- 配置等细节放设计 doc 文字,不进画板
+- AGENT 数量 = 3 是**当前基线**(设计源 doc 8.3 拍板,不是占位);流程图写"AGENT 串行调用",1 vs 3 切换由探针决定(§3.5)
 - **节点字数硬限**: ≤ 10 字(v2.0 §10.9)
-
-## 6. 已知平台限制
-
-- 飞书画板箭头 1px narrow 缩放后不可见(LRN-20260806-003)
-- 飞书画板 = Mermaid 输入,不要走 openapi 后处理(LRN-20260806-002)
-- 流程图上传前先 ASCII 走读连接顺序(LRN-20260806-006)
-- OpenClaw exec 拒绝 GITHUB_TOKEN env var(LRN-20260803-026)→ 走 here-doc + 临时脚本
-- here-doc 单引号 `'EOF'` 不展开 `$VAR`(LRN-20260803-027)→ 用 `<< EOF`(裸)或脚本外传参

@@ -1,12 +1,12 @@
 # aftersales-judge-decide config.yaml (L4 实例配置)
 # Per SKILL开发实践模版参考.md §7.5.3 L4 实例配置 + §10.8 严格替换 + §10.14 L3 契约
-# v1.2 2026-08-10 04:17 (任锐拍板: 删 type + 加 description + primary_key 拆 name+id)
+# v1.2 2026-08-10 04:17 (确认拍板: 删 type + 加 description + primary_key 拆 name+id)
 #
 # 阻塞项 B1/B2/B3/B4 收口后补完 (规划 v2 Phase 1.1-1.3)
-#   B1 商品维度统计表 metadata: 任锐 Phase 1.1
-#   B2 门店表 metadata: 任锐 Phase 1.1
-#   B3 真实样本 10-20 条: 任锐 Phase 1.2
-#   B4 评估标准定稿: 任锐 + 助手联合 Phase 1.3
+#   B1 商品维度统计表 metadata: 确认 Phase 1.1
+#   B2 门店表 metadata: 确认 Phase 1.1
+#   B3 真实样本 10-20 条: 确认 Phase 1.2
+#   B4 评估标准定稿: 确认 + 助手联合 Phase 1.3
 #
 # 加载策略: 严格替换 + 启动时校验 (模板 §10.8 推荐)
 #   - ${VAR} 引用 env, env 缺失时启动失败
@@ -15,7 +15,7 @@
 #                                   BITABLE_APP_TOKEN_RULES, PROBE_OUTPUT_DIR]
 #   - frontmatter requires.config: [config.yaml]
 #
-# 注: app_token 暂保留 ${VAR:default} 格式. 任锐 04:14 提及"目标表是其他的",
+# 注: app_token 暂保留 ${VAR:default} 格式. 确认 04:14 提及"目标表是其他的",
 # task_table 实际所属 base 待澄清, 不先动 default. Phase 1.1 收口时一并改严格替换.
 #
 # 23 个 select_fields 从 source table 拉 description (权威值):
@@ -289,10 +289,10 @@ ast_rules:
         - field: 优先级
           field_id: flddnAK6BZ
           direction: desc
-      fetch_fields:                         # 5 字段（任锐 09:26 + 09:58 拍板，副作用不在内）
+      fetch_fields:                         # 5 字段（确认 09:26 + 09:58 拍板，副作用不在内）
         - name: 优先级
           field_id: flddnAK6BZ
-        - name: 触发条件AST                    # ★ 任锐 09:58 拍板：LLM 用这个
+        - name: 触发条件AST                    # ★ 确认 09:58 拍板：LLM 用这个
           field_id: fld4IQbIrS
         - name: 调整动作类型
           field_id: fld5YOKao4

@@ -36,3 +36,7 @@ package-lock.json
 # 探针输出（运行时生成, gitignore）
 probes/
 probe-results-*.json
+
+
+# 本地临时文件
+trash/

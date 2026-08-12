@@ -1,4 +1,4 @@
-# 8 必备包 — 版本下限来源: references/env_requirements.md §A.2 实物版本
+# 8 必备包 — 版本下限 = 此前沙箱实物版本
 # Python 解释器要求: 3.9+（推荐 3.11~3.13；不要用 3.14，pandas/numpy 无 cp314 wheel）
 pyyaml>=5.1,<7          # 实物 6.0.3 — config.yaml 加载
 jinja2>=3.0             # 实物 3.1.6 — agent{1,2,3}_prompt_template.j2 渲染
