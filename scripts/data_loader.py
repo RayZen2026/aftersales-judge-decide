@@ -152,11 +152,16 @@ class Envelope:
 
 def record_list(cfg: dict, *, app_token: str, table_id: str,
                 field_names: Optional[list[str]] = None,
+                view_id: Optional[str] = None,
                 filter_json: Optional[str] = None,
                 sort_json: Optional[str] = None,
                 limit: Optional[int] = None,
                 page_size: int = 200, max_pages: int = 20) -> Envelope:
-    """base +record-list 分页拉取。field_names 必须显式投影（不投影返回列数不可控）。"""
+    """base +record-list 分页拉取。field_names 必须显式投影（不投影返回列数不可控）。
+
+    ⚠️ view_id 与 filter_json 互斥使用：实测 --filter-json 会**完全覆盖**视图过滤
+    （视图时间窗丢失）。按视图拉时额外条件走客户端过滤。
+    """
     env = Envelope()
     offset = 0
     last_has_more = False
@@ -166,6 +171,8 @@ def record_list(cfg: dict, *, app_token: str, table_id: str,
             break
         args = ["base", "+record-list",
                 "--base-token", app_token, "--table-id", table_id]
+        if view_id:
+            args += ["--view-id", view_id]
         for name in field_names or []:
             args += ["--field-id", name]
         if filter_json:
@@ -312,12 +319,29 @@ def _sort_json(spec_sort: list[dict]) -> Optional[str]:
 
 
 def fetch_tasks_live(cfg: dict, limit: int) -> Envelope:
+    """按视图「近两天数据」拉取（不拉全量，确认 2026-08-12 拍板），客户端过滤处理状态。
+
+    视图过滤 = 审批创建时间 > Yesterday（相对滚动窗口，无法用 filter-json 表达）；
+    且 --filter-json 与 --view-id 同传会覆盖视图过滤（实测），故状态过滤走客户端；
+    拉取范围 = 未处理 + 已处理-失败（architecture.md §2 拉取矩阵：失败单 cron 兜底重试）；
+    limit 在过滤后应用。
+    """
     tt = cfg["task_table"]
+    view = tt.get("fetch_view") or {}
+    view_id = view.get("id") or view.get("name")
+    if not view_id:
+        raise KeyError("config.yaml task_table.fetch_view 缺失（拉取范围必须按视图，禁止全量）")
     names = cfg["probe"]["task_fetch"]["field_names"]
     env = record_list(cfg, app_token=tt["app_token"], table_id=tt["table_id"],
-                      field_names=names, filter_json=_filter_eq("处理状态", "未处理"),
-                      limit=limit)
-    logger.info("任务表拉取: %d 条 (过滤 处理状态=未处理)", len(env.records))
+                      field_names=names, view_id=view_id)
+    total = len(env.records)
+    status_in = set(cfg["probe"]["task_fetch"].get("status_in") or ["未处理", "已处理-失败"])
+    kept = [(r, rid) for r, rid in zip(env.records, env.record_ids)
+            if r.get("处理状态") in status_in][:limit]
+    env.records = [r for r, _ in kept]
+    env.record_ids = [rid for _, rid in kept]
+    logger.info("任务表拉取: 视图 %s 共 %d 条 → 处理状态∈%s 保留 %d 条 (limit %d)",
+                view.get("name", view_id), total, sorted(status_in), len(env.records), limit)
     return env
 
 

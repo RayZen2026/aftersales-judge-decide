@@ -26,6 +26,9 @@ task_table:
   app_token: U7XQbSEq6axXfJsj2QocRxlQnqb
   table_id: tblEMESCIIr4pqz8
   source_url: https://bggc.feishu.cn/wiki/IM07wGjh9iVU64kNu8gcjirQn0K?table=tblEMESCIIr4pqz8
+  fetch_view:                              # 拉取范围 = 视图「近两天数据」（确认 2026-08-12 拍板，不拉全量）
+    name: 近两天数据                        # 视图过滤: 审批创建时间 > Yesterday（相对滚动窗口，只能按视图拉）
+    id: vewdVsAfk9                          # 2026-08-12 实查；代码优先用 id（防改名），缺失退回 name
   select_fields:
   - id: fldxDQnNyE
     name: 诉求类型
@@ -425,6 +428,9 @@ probe:
   task_fetch:
     limit_default: 5
     limit_max: 10
+    status_in:                             # 客户端过滤（视图拉取后）；filter-json 会覆盖视图过滤（2026-08-12 实测），不能与 view 同传
+    - 未处理                                # 表中现行值（= 拍板 5 状态的"待处理"，阻塞项 #7 待统一）
+    - 已处理-失败                            # cron 兜底重试（architecture.md §2 拉取矩阵：拉取 = 待处理 + 失败）
     field_names:                            # 任务表 25 读取字段（live 投影；≠ task_table.select_fields 23 写回字段）
     - 升级售后单号
     - 诉求类型
