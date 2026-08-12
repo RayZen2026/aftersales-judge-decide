@@ -45,7 +45,7 @@
 - [x] 确认 review PROPOSAL → 提供 4 类阻塞数据（metadata 收口 ✅ / 样本 live + GT 4 条 ✅ / 评估标准部分 ✅——准确率口径残留转 Phase 3）
 - [x] 维度表 metadata 收口(商品维度统计表 + 门店表 app_token / table_id / 字段映射) —— 2026-08-12 实查收口：6 表全部可读，config.yaml 验证；门店分层规则 table_id 笔误修复（tbllJ5aMajBhYRjIs → tbllJ5aMjBhYRjIs）
 - [x] **T1.4a 数据层探针版（补遗，原计划遗漏）**：`scripts/data_loader.py` —— live lark-cli + CSV 双来源 → 统一 SampleSet schema；维度 JOIN（商品按商品id+订单日期 日期级匹配 / 门店快照按店铺id）+ apply_tier 集成（submodules/store-tier-rules import）；**拉取范围 = 视图「近两天数据」**（D-20260812-006；filter-json 覆盖视图过滤 → 状态过滤客户端，范围 = 未处理 + 已处理-失败）；Phase 2 feishu_bitable.py 复用同一数据契约，只换 fetch 实现
-- [ ] 真实样本数据 10-20 条准备（live 拉取已通；GT 标注 4 条已入库 `assets/eval/ground_truth_v1.csv`；**扩充至 10-20 条转 Phase 3 回归**）
+- [x] 真实样本数据 10-20 条准备（live 拉取已通；GT 标注 4 条已入库 `assets/eval/ground_truth_v1.csv`；端到端 3 条真实写入验证通过；扩充 10-20 条转 Phase 5 回归）
 - [ ] 评估标准定稿(准确率 / 一致性 / latency 阈值)（Round 1 只跑格式/一致性/latency；准确率口径 Round 2，2026-08-12 确认拍板）
 - [x] probe_llm.py 框架(Phase 1 实质实现: DashScope qwen-plus-latest 占位全链 + jinja2 渲染 + JSON 提取/schema 校验 + 报告对齐 eval_standard §8) + config.yaml 补 `probe` 块(output_dir / test_scenarios / evaluation_rubric / llm / task_fetch / task_field_mapping / store_tier)
 - [x] **T1.5 1 AGENT 完整流程探针**(5-10 样本)——**1 vs 3 决策基线**(设计方案 §0.1:探针通过 → 改 1 AGENT)；**Round 1 跑通完成**（2026-08-12：5 样本 × 3 runs，格式 1.0 / latency P95 13.3s / 一致性 core 0.34）；准确率判定待 Round 2
@@ -130,7 +130,7 @@
 - [x] **承担比例偏差已知**（GT 对比全 50:50 vs GT 1:9~5:5）— Phase 5 调优首要项
 - [x] `main.py` Workflow 编排(Stage1 视图拉取 + Stage2 批量 JOIN/分层 + Stage3 per-item 串行抢锁→判责→写表)
 - [x] `分配校正` 纯数学模块(allocate_correction platform/merchant，已在 main.py)
-- [ ] 集成测试(状态机推进 + 写表)——Phase 4 端到端覆盖
+- [x] 集成测试(状态机推进 + 写表)——Phase 4 端到端 3 条全流程覆盖（抢锁→判责→任务表状态写入→test_result_table 写入）
 - [ ] 10-20 样本正式回归(评估标准验收,含 GT 扩充集准确率)
 
 ## 7. Phase 4: 端到端 + 生产部署(5-7 天)
@@ -140,17 +140,10 @@
 ### 任务清单
 - [x] 字段映射修正（实查对齐）：判责理由→判责结果；提价结果类型→提交结果类型；新增满足期望类型 + 判责报告（judgment_summary+basis 格式化）；test_result_table 配置隔离
 - [x] 端到端探针（1 条冒烟 + 3 条完整 auto 流程 × 状态机推进 × 两表写入）
-- [ ] 准确率 / 一致性 / latency 评估（GT 扩充 10-20 条后）
+- [ ] 准确率 / 一致性 / latency 评估（GT 扩充 10-20 条后；承担比例偏差 Phase 5 调优）
 - [ ] 失败场景演练（9 类失败全跑）
 - [ ] OpenClaw cron 配置(hourly 10-23 Asia/Shanghai)
-- [ ] 监控 + 告警(飞书私聊 + memory_file)
-- [ ] memory_file 通知通道路径对齐 OpenClaw workspace memory 目录（开发期为 SKILL 目录 memory/ 下的文件近似，config `notify.channels[memory_file].path` 可调；去重状态独立在 state/，不入 memory 通道）
-- [ ] 第一次跑(小流量验证)+ 全量切流
-- [ ] 准确率 / 一致性 / latency 评估
-- [ ] 失败场景演练(9 类失败全跑)
-- [ ] OpenClaw cron 配置(hourly 10-23 Asia/Shanghai)
-- [ ] 监控 + 告警(飞书私聊 + memory_file)
-- [ ] memory_file 通知通道路径对齐 OpenClaw workspace memory 目录（开发期为 SKILL 目录 memory/ 下的文件近似，config `notify.channels[memory_file].path` 可调；去重状态独立在 state/，不入 memory 通道）
+- [ ] 监控 + 告警(飞书私聊 FEISHU_NOTIFY_ENABLED=1 + memory_file 通道对齐 OpenClaw workspace)
 - [ ] 第一次跑(小流量验证)+ 全量切流
 
 ## 8. Phase 5: 观察期 + 优化(1 周)
