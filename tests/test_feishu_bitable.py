@@ -132,7 +132,7 @@ def test_build_result_fields():
     resp = {"platform": 10, "merchant": 90}
     out = {
         "action": "赔付", "amount": 77.43,
-        "price_uplift_result_type": "同意",
+        "price_uplift_result_type": "同意",     # LLM 输出不再透传，从 action 推导
         "expectation_satisfaction_type": "完全满足",
         "judgment_summary": "综合意见",
         "judgment_basis": {"store_profile": "B级", "fact_finding": "品质问题",
@@ -143,16 +143,24 @@ def test_build_result_fields():
     }
     fields = fb.build_result_fields("UAS1", out)
     assert fields["升级售后单号"] == "UAS1"
-    assert "24" not in fields["判责结果"]           # 这条金额不是 24
-    assert "77.43" in fields["判责结果"]            # 格式化简短结论含金额
+    assert "77.43" in fields["判责结果"]
     assert "平台商家10:90" in fields["判责结果"]
-    assert fields["提交结果类型"] == "同意"          # 提交（不是提价）
+    assert fields["提交结果类型"] == "同意"         # action=赔付 → 同意
     assert fields["满足期望类型"] == "完全满足"
-    assert "【判责结论】" in fields["判责报告"]       # 报告含 judgment_summary
-    assert "【门店画像】" in fields["判责报告"]       # 报告含 judgment_basis
+    assert "【判责结论】" in fields["判责报告"]
+    assert "【门店画像】" in fields["判责报告"]
 
 
 def test_build_result_fields_defaults():
     fields = fb.build_result_fields("UAS1", {"action": "需人工"})
-    assert fields["提交结果类型"] == "需人工"         # 提交（不是提价）
+    assert fields["提交结果类型"] == "需人工"        # action=需人工 → 需人工
     assert fields["满足期望类型"] == "需人工"
+
+
+def test_derive_submission_result():
+    """提交结果类型必须从 action 推导，不依赖 LLM 输出。"""
+    assert fb._derive_submission_result("赔付") == "同意"
+    assert fb._derive_submission_result("退货") == "同意"
+    assert fb._derive_submission_result("退款") == "同意"
+    assert fb._derive_submission_result("无需处理") == "拒绝"   # 核心修复：不赔付不退货才是拒绝
+    assert fb._derive_submission_result("需人工") == "需人工"

@@ -162,20 +162,37 @@ def _format_judgment_result(output: dict) -> str:
     return result
 
 
+def _derive_submission_result(action: str) -> str:
+    """从 action 推导提交结果类型（不依赖 LLM 直接输出，防止误判）。
+
+    业务规则：
+      - 赔付 / 退货 / 退款 = 同意（门店诉求得到响应）
+      - 无需处理 = 拒绝（不赔付且不退货，门店诉求被驳回）
+      - 需人工   = 需人工（待运营处理）
+    """
+    if action in ("赔付", "退货", "退款"):
+        return "同意"
+    if action == "无需处理":
+        return "拒绝"
+    return "需人工"
+
+
 def build_result_fields(order_id: str, output: dict) -> dict:
     """1-AGENT 输出 schema v2 → 判责结果表写入字段（5 字段，2026-08-12 实查对齐）。
 
     字段映射：
       升级售后单号  ← order_id
       判责结果      ← 简短格式化结论（如"同意赔付77.43，平台商家1:9"）
-      提交结果类型  ← price_uplift_result_type（同意/拒绝/需人工）
+      提交结果类型  ← 从 action 推导（同意/拒绝/需人工），不透传 LLM 输出
+                      赔付/退货/退款 → 同意；无需处理 → 拒绝；需人工 → 需人工
       满足期望类型  ← expectation_satisfaction_type（完全满足/部分满足/不满足/需人工）
       判责报告      ← judgment_summary + judgment_basis 格式化（业务人员查阅）
     """
+    action = output.get("action") or "需人工"
     return {
         "升级售后单号": order_id,
         "判责结果": _format_judgment_result(output),
-        "提交结果类型": output.get("price_uplift_result_type") or "需人工",
+        "提交结果类型": _derive_submission_result(action),
         "满足期望类型": output.get("expectation_satisfaction_type") or "需人工",
         "判责报告": _format_judgment_report(output),
     }
