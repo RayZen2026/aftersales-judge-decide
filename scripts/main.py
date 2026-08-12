@@ -97,7 +97,7 @@ def agent2(input_data: dict, agent1_output: dict) -> dict:
     输入: input_data + agent1_output
 
     输出: {
-        "responsibility": {"meituan": int, "merchant": int},  # 0-100, 之和=100
+        "responsibility": {"platform": int, "merchant": int},  # 0-100, 之和=100
         "reasoning": str,
         "confidence": float,
         "key_factors": list
@@ -105,7 +105,7 @@ def agent2(input_data: dict, agent1_output: dict) -> dict:
     """
     # TODO Phase 3.2: 渲染 agent2_prompt_template.j2 + 调 LLM 共享链 + 解析 JSON
     return {
-        "responsibility": {"meituan": 0, "merchant": 0},
+        "responsibility": {"platform": 0, "merchant": 0},
         "reasoning": "AGENT 2 占位实现,待 Phase 3.2 真实实现",
         "confidence": 0.0,
         "key_factors": [],
@@ -115,19 +115,19 @@ def agent2(input_data: dict, agent1_output: dict) -> dict:
 def allocate_correction(responsibility: dict) -> dict:
     """
     分配校正(纯数学,不调 LLM,D-20260806-008)
-    确保 meituan + merchant = 100(等比缩放)
+    确保 platform + merchant = 100(等比缩放)
 
-    输入: responsibility = {"meituan": int, "merchant": int}
+    输入: responsibility = {"platform": int, "merchant": int}
     输出: responsibility(校正后)
     """
     # TODO Phase 3.4: 等比缩放实现
-    m = responsibility.get("meituan", 0)
+    p = responsibility.get("platform", 0)
     s = responsibility.get("merchant", 0)
-    total = m + s
+    total = p + s
     if total == 0:
-        return {"meituan": 0, "merchant": 0}
+        return {"platform": 0, "merchant": 0}
     return {
-        "meituan": round(m * 100 / total),
+        "platform": round(p * 100 / total),
         "merchant": round(s * 100 / total),
     }
 

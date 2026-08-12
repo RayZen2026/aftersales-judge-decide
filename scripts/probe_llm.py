@@ -55,7 +55,7 @@ AGENT_TEMPLATES = {
 }
 
 # 自由文本字段——一致性 core 口径排除（strict 仍含）
-FREE_TEXT_FIELDS = {"reasoning", "judgment_summary", "key_factors", "tags"}
+FREE_TEXT_FIELDS = {"reasoning", "judgment_summary", "key_factors", "tags", "judgment_basis"}
 
 
 class ProbeFormatError(ValueError):
@@ -226,7 +226,7 @@ def extract_json(text: str) -> dict:
 
 
 # 字段规格: "number" / "string" / "list" / ("enum", [...]) / ("responsibility", dict)
-AGENT_OUTPUT_SCHEMAS: dict[str, dict[str, Any]] = {
+AGENT_OUTPUT_SCHEMAS: dict[str, Any] = {
     "agent1": {
         "store_expected": ("enum", ["应退货", "应赔付", "应退货或赔付", "需人工"]),
         "store_expected_amount": "number",
@@ -247,20 +247,27 @@ AGENT_OUTPUT_SCHEMAS: dict[str, dict[str, Any]] = {
         "confidence": "number",
         "tags": "list?",
     },
+    # 1-AGENT 输出 schema v2（2026-08-12 确认拍板切 1 AGENT 后定稿）
+    # 依据: 判责结果表写字段 + ground truth 样例 + business_context §4.3 推理链
     "single": {
         "store_expected": ("enum", ["应退货", "应赔付", "应退货或赔付", "需人工"]),
         "store_expected_amount": "number",
-        "responsibility": "responsibility",
-        "judgment_summary": "string",
-        "action": ("enum", ["退款", "退货", "赔付", "无需处理", "需人工"]),
+        "action": ("enum", ["赔付", "退货", "退款", "无需处理", "需人工"]),
         "amount": "number",
-        "responsibility_summary": "string",
+        "responsibility": "responsibility",
+        "price_uplift_result_type": ("enum", ["同意", "拒绝", "需人工"]),
+        "expectation_satisfaction_type": ("enum", ["完全满足", "部分满足", "不满足", "需人工"]),
+        "judgment_summary": "string",
+        "judgment_basis": "judgment_basis",
         "reasoning": "string",
         "confidence": "number",
         "key_factors": "list",
         "tags": "list?",
     },
 }
+
+JUDGMENT_BASIS_PARTS = ["store_profile", "fact_finding", "responsibility_reasoning",
+                        "rule_reference", "decision_comparison"]
 
 
 def _check_field(name: str, value: Any, spec: Any) -> Optional[str]:
@@ -288,10 +295,19 @@ def _check_field(name: str, value: Any, spec: Any) -> Optional[str]:
         if not isinstance(value, dict):
             return f"类型错: {name} 应为 dict, 实为 {type(value).__name__}"
         errs = []
-        for k in ("meituan", "merchant"):
+        for k in ("platform", "merchant"):
             v = value.get(k)
             if isinstance(v, bool) or not isinstance(v, (int, float)):
                 errs.append(f"类型错: {name}.{k} 应为 number")
+        return "; ".join(errs) if errs else None
+    if base == "judgment_basis":
+        if not isinstance(value, dict):
+            return f"类型错: {name} 应为 dict, 实为 {type(value).__name__}"
+        errs = []
+        for part in JUDGMENT_BASIS_PARTS:
+            v = value.get(part)
+            if not isinstance(v, str) or not v.strip():
+                errs.append(f"必填缺失: {name}.{part}")
         return "; ".join(errs) if errs else None
     return None
 
@@ -360,7 +376,7 @@ def probe_single_flow(cfg, env, client, sample, judgment_rules, run_index=0):
     if res.output and isinstance(res.output.get("responsibility"), dict):
         corrected = allocate_correction(res.output["responsibility"])
         res.output["responsibility_corrected"] = corrected
-        if corrected == {"meituan": 0, "merchant": 0}:
+        if corrected == {"platform": 0, "merchant": 0}:
             # 模板契约：规则无匹配/必填缺失 → 0/0 + confidence=0 = 需人工信号（合法输出，非格式错误）
             res.output["manual_review_signal"] = True
     return [res]
@@ -383,7 +399,7 @@ def probe_three_agent_chain(cfg, env, client, sample, judgment_rules, run_index=
     corrected = None
     if a2.ok and isinstance(a2.output.get("responsibility"), dict):
         corrected = allocate_correction(a2.output["responsibility"])
-        if corrected == {"meituan": 0, "merchant": 0}:
+        if corrected == {"platform": 0, "merchant": 0}:
             # 模板契约：规则无匹配/必填缺失 → 0/0 + confidence=0 = 需人工信号（合法输出，非格式错误）
             # 链路继续：9 类失败处理仅在最终 AGENT 后执行（architecture.md §3）
             a2.output["manual_review_signal"] = True

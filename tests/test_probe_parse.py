@@ -19,7 +19,7 @@ def test_extract_bare_braces():
 
 
 def test_extract_nested_braces():
-    obj = {"responsibility": {"meituan": 30, "merchant": 70}, "reasoning": "x"}
+    obj = {"responsibility": {"platform": 30, "merchant": 70}, "reasoning": "x"}
     text = "输出：" + json.dumps(obj, ensure_ascii=False)
     assert pl.extract_json(text) == obj
 
@@ -63,10 +63,10 @@ def test_validate_agent1_missing_required():
 
 
 def test_validate_agent2_responsibility_type():
-    obj = {"responsibility": {"meituan": "30", "merchant": 70},
+    obj = {"responsibility": {"platform": "30", "merchant": 70},
            "reasoning": "x", "confidence": 0.5, "key_factors": ["a"]}
     errs = pl.validate_output("agent2", obj)
-    assert any("responsibility.meituan" in e for e in errs)
+    assert any("responsibility.platform" in e for e in errs)
 
 
 def test_validate_agent3_tags_optional():
