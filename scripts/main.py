@@ -370,8 +370,12 @@ def _check_required_fields(task_row: dict) -> list[str]:
 
 
 def process_item(cfg: dict, sample: dict, record_id: str,
-                 judgment_rules: list, backend, fb, notify_dedup) -> str:
-    """单条处理（抢锁→判责→写表→释放）。返回最终状态内部键。"""
+                 judgment_rules: list, backend, fb, notify_dedup, test_mode: bool = False) -> str:
+    """单条处理（抢锁→判责→写表→释放）。返回最终状态内部键。
+
+    test_mode=True: 写测试表（test_result_table），跳过抢锁/释放锁
+    test_mode=False: 写生产表（result_table），正常抢锁/释放锁
+    """
     import agent_single                            # noqa: PLC0415
     from failure_handler import decide             # noqa: PLC0415
     from feishu_notify import notify               # noqa: PLC0415
@@ -416,7 +420,7 @@ def process_item(cfg: dict, sample: dict, record_id: str,
             notify(cfg, notify_dedup, item_id, result.failure_type or "llm_ability_exceeded",
                    "; ".join(result.format_errors or [result.failure_type or ""]), now)
         if decision.write_result_table and result.output:
-            _write_result(cfg, fb, item_id, result.output)
+            _write_result(cfg, fb, item_id, result.output, test_mode=test_mode)
         logger.info("%s 失败 %s → %s", item_id, result.failure_type, target)
         return target
 
@@ -427,13 +431,13 @@ def process_item(cfg: dict, sample: dict, record_id: str,
         notify(cfg, notify_dedup, item_id, "rule_conflict",
                "规则无匹配或模型判定需人工", now)
         if result.output:
-            _write_result(cfg, fb, item_id, result.output)
+            _write_result(cfg, fb, item_id, result.output, test_mode=test_mode)
         logger.info("%s 需人工", item_id)
         return target
 
     # 成功终态
     fb.release_lock(cfg, record_id, "completed")
-    _write_result(cfg, fb, item_id, result.output)
+    _write_result(cfg, fb, item_id, result.output, test_mode=test_mode)
     logger.info("%s 完成: action=%s amount=%s",
                 item_id,
                 result.output.get("action"),
@@ -441,10 +445,15 @@ def process_item(cfg: dict, sample: dict, record_id: str,
     return "completed"
 
 
-def _write_result(cfg: dict, fb, item_id: str, output: dict) -> None:
-    fields = fb.build_result_fields(item_id, output)
+def _write_result(cfg: dict, fb, item_id: str, output: dict, test_mode: bool = False) -> None:
+    """写判责结果表（生产表或测试表）。
+
+    test_mode=True: 写测试表（15字段，含judgment_basis 8维展开）
+    test_mode=False: 写生产表（5字段）
+    """
+    fields = fb.build_result_fields(item_id, output, test_mode=test_mode)
     try:
-        fb.upsert_result_record(cfg, fields)
+        fb.upsert_result_record(cfg, fields, test_mode=test_mode)
     except Exception as e:  # noqa: BLE001
         logger.error("写判责结果表失败 %s: %s", item_id, e)
 
@@ -516,9 +525,10 @@ def cmd_manual(args, logger_) -> dict:
     samples, judgment_rules = stage2_prepare(cfg, env.records)
     notify_dedup = NotifyDedup(window_hours=cfg["notify"]["dedup"]["window_hours"])
     backend = _make_backend(cfg)
+    test_mode = getattr(args, 'test_mode', False)  # 支持--test-mode标志
     final = process_item(cfg, samples[0], env.record_ids[0],
-                         judgment_rules, backend, fb, notify_dedup)
-    return {"mode": "manual", "item_id": args.item_id, "final_state": final}
+                         judgment_rules, backend, fb, notify_dedup, test_mode=test_mode)
+    return {"mode": "manual", "item_id": args.item_id, "final_state": final, "test_mode": test_mode}
 
 
 def cmd_probe(args, logger_) -> dict:
@@ -548,6 +558,7 @@ def main():
     subparsers.add_parser("auto", help="cron 自动模式")
     p_manual = subparsers.add_parser("manual", help="手动处理单条")
     p_manual.add_argument("--item-id", required=True)
+    p_manual.add_argument("--test-mode", action="store_true", help="写测试表（15字段）而非生产表（5字段）")
 
     # 开发内部（不进 SKILL.md body，CLAUDE.md §"开发模式"）
     p_probe = subparsers.add_parser("probe", help="探针（开发内部）")
