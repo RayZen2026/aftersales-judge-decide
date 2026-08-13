@@ -102,6 +102,8 @@ table_id 一律以 `lark-cli` 实查为准。2026-08-12 已修复：`config.yaml
 - **config.yaml 严格替换**：`${VAR}` 引用 env，缺失即启动失败；preflight 启动检查 5 项（feishu 凭据 / bitable 可达 / LLM 链 / cron 冲突 / 磁盘空间）。
 - **5 状态写库分表**：任务表 update 幂等（5 状态都更新）；判责结果表 insert 1 单 1 行（仅成功/需人工终态，不写已处理-失败）。
 - **沙箱 push 走一次性 PAT**：临时脚本 + url.insteadOf + push + unset + 删脚本；验证清理 5 项（`url.*` / `grep` / `known_hosts` / `memory/` / `/tmp/gh_push_*.sh`）。
+- **迭代记录位置**：所有 Phase 5 Prompt 优化的迭代记录放在 `trash/迭代记录/`，包含 INDEX.md（版本对比索引）+ v0.X.0.md（完整迭代报告）。
+- **迭代记录结构**：每个 v0.X.0.md 必须预留"## 八、补充建议与思考"章节，供用户 review 后补充业务洞察、优化方向、数据调整建议等内容。
 
 ---
 
@@ -132,6 +134,7 @@ table_id 一律以 `lark-cli` 实查为准。2026-08-12 已修复：`config.yaml
 
 ## 9. Commit 规范（通用）
 
+- **用户未明确要求不 commit**：除非用户明确说"提交"/"commit"，否则不主动创建 commit。完成代码修改后等待用户指示。
 - **一个逻辑变更一个 commit**：不混入无关改动，也不把完整变更拆得支离破碎。
 - **message 格式**：`type: 标题` — 中文标题 ≤ 50 字，写清做了什么；type 取 feat / fix / docs / refactor / test / chore。
 - **body 写背景**：需要说明决策背景或取舍时在 body 展开；决策结论记 `README.md` 决策历史，不靠 commit message 承载。
