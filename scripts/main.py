@@ -203,13 +203,71 @@ def init_logging(level: str = "INFO") -> logging.Logger:
 
 
 def allocate_correction(responsibility: dict) -> dict:
-    """分配校正（纯数学，D-20260806-008）——供 agent_single.py import。"""
+    """4方责任分配校正（Phase 5，纯数学）——供 agent_single.py import。
+
+    物流/代理人互斥：只有一方>0，另一方=0。
+    platform + merchant + (logistics | agent) = 100
+    物流≤30%、代理人≤20%（下游校正会截断）。
+    total=0 → {0,0,0,0}（破坏"和=100"不变量，报告视其为格式异常）。
+    """
     p = responsibility.get("platform", 0) or 0
-    s = responsibility.get("merchant", 0) or 0
-    total = p + s
+    m = responsibility.get("merchant", 0) or 0
+    l = responsibility.get("logistics", 0) or 0
+    a = responsibility.get("agent", 0) or 0
+
+    # 互斥约束：物流/代理人二选一，若同时>0则优先物流
+    if l > 0 and a > 0:
+        a = 0  # 物流优先，代理人归零
+
+    total = p + m + l + a
+
     if total == 0:
-        return {"platform": 0, "merchant": 0}
-    return {"platform": round(p * 100 / total), "merchant": round(s * 100 / total)}
+        return {"platform": 0, "merchant": 0, "logistics": 0, "agent": 0}
+
+    # 等比缩放到100
+    scale = 100.0 / total
+    corrected = {
+        "platform": round(p * scale),
+        "merchant": round(m * scale),
+        "logistics": round(l * scale),
+        "agent": round(a * scale),
+    }
+
+    # 四舍五入补差（补到最大方）
+    diff = 100 - sum(corrected.values())
+    if diff != 0:
+        max_party = max(corrected, key=corrected.get)
+        corrected[max_party] += diff
+
+    # 上限截断（物流≤30%、代理人≤20%）
+    if corrected["logistics"] > 30:
+        overflow = corrected["logistics"] - 30
+        corrected["logistics"] = 30
+        # 溢出部分按 platform:merchant 原比例分配
+        if corrected["platform"] + corrected["merchant"] > 0:
+            ratio = corrected["platform"] / (corrected["platform"] + corrected["merchant"])
+            corrected["platform"] += round(overflow * ratio)
+            corrected["merchant"] += overflow - round(overflow * ratio)
+        else:
+            corrected["platform"] += overflow
+
+    if corrected["agent"] > 20:
+        overflow = corrected["agent"] - 20
+        corrected["agent"] = 20
+        if corrected["platform"] + corrected["merchant"] > 0:
+            ratio = corrected["platform"] / (corrected["platform"] + corrected["merchant"])
+            corrected["platform"] += round(overflow * ratio)
+            corrected["merchant"] += overflow - round(overflow * ratio)
+        else:
+            corrected["platform"] += overflow
+
+    # 再次修正和=100（截断后可能漂移）
+    final_diff = 100 - sum(corrected.values())
+    if final_diff != 0:
+        max_party = max(corrected, key=corrected.get)
+        corrected[max_party] += final_diff
+
+    return corrected
 
 
 def _make_backend(cfg: dict):
