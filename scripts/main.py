@@ -271,9 +271,19 @@ def allocate_correction(responsibility: dict) -> dict:
 
 
 def _make_backend(cfg: dict):
-    """开发期 DashScopeBackend；生产 MiaodaBackend（Phase 4 切换）。"""
-    from llm import DashScopeBackend  # noqa: PLC0415
-    return DashScopeBackend(cfg)
+    """根据配置选择 LLM 后端：开发用 DashScopeBackend，生产用 MiaodaBackend。
+
+    判断依据：cfg.llm.use_production_chain
+    - false（默认）: DashScopeBackend（开发环境，Qwen DashScope）
+    - true: MiaodaBackend（生产环境，openclaw subprocess）
+    """
+    use_prod = cfg.get("llm", {}).get("use_production_chain", False)
+    if use_prod:
+        from llm import MiaodaBackend  # noqa: PLC0415
+        return MiaodaBackend(cfg)
+    else:
+        from llm import DashScopeBackend  # noqa: PLC0415
+        return DashScopeBackend(cfg)
 
 
 # ============================================================

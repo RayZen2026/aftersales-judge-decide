@@ -156,14 +156,89 @@ class DashScopeBackend:
 
 
 class MiaodaBackend:
-    """生产后端：妙搭 innerapi（openclaw subprocess 调用）。Phase 4 实现。"""
+    """生产后端：妙搭 innerapi（openclaw subprocess 调用）。
+
+    model 入参格式：miaoda/glm-5.1（chain 已带前缀，直接传给 openclaw）。
+    调用方式：openclaw infer model run --model <model> --prompt <prompt> --json
+    """
 
     def __init__(self, cfg: dict):
-        raise NotImplementedError(
-            "MiaodaBackend Phase 4 实现（openclaw subprocess；LRN-20260802-013：本地直调不通）")
+        llm_cfg = cfg.get("llm", {})
+        self.timeout = llm_cfg.get("timeout_seconds", 120)
+        self.max_tokens_cap = llm_cfg.get("params", {}).get("max_tokens", 30000)
 
     def call(self, model: str, prompt: str, params: dict) -> LLMResponse:
-        raise NotImplementedError
+        """通过 openclaw subprocess 调用妙搭 LLM。
+
+        返回 LLMResponse；所有异常收敛到 error_kind，不上抛。
+        """
+        import json
+        import subprocess
+
+        t0 = time.perf_counter()
+        max_tokens = params.get("max_tokens")
+        max_tokens = min(max_tokens, self.max_tokens_cap) if max_tokens else self.max_tokens_cap
+
+        try:
+            result = subprocess.run(
+                ["openclaw", "infer", "model", "run",
+                 "--model", model,          # model 已是 "miaoda/glm-5.1" 完整格式
+                 "--prompt", prompt,
+                 "--json"],
+                capture_output=True,
+                text=True,
+                timeout=self.timeout,
+            )
+            latency = int((time.perf_counter() - t0) * 1000)
+
+            # 检查进程退出码
+            if result.returncode != 0:
+                stderr = (result.stderr or "").strip()[:200]
+                return LLMResponse(
+                    content="", latency_ms=latency, model=model,
+                    error=f"openclaw exit {result.returncode}: {stderr}",
+                    error_kind=ERR_5XX)
+
+            # 解析 JSON
+            try:
+                data = json.loads(result.stdout)
+            except json.JSONDecodeError as e:
+                return LLMResponse(
+                    content="", latency_ms=latency, model=model,
+                    error=f"JSON decode failed: {e}",
+                    error_kind=ERR_5XX)
+
+            # 检查业务状态
+            if not data.get("ok"):
+                return LLMResponse(
+                    content="", latency_ms=latency, model=model,
+                    error=f"openclaw ok=false: {data}",
+                    error_kind=ERR_UNKNOWN)  # 业务失败不重试
+
+            # 提取输出文本
+            outputs = data.get("outputs") or []
+            text = outputs[0].get("text", "") if outputs else ""
+
+            return LLMResponse(
+                content=text,
+                latency_ms=latency,
+                model=model,
+                completion_tokens=None)  # openclaw 输出不含 token 统计
+
+        except subprocess.TimeoutExpired:
+            latency = int((time.perf_counter() - t0) * 1000)
+            return LLMResponse(
+                content="", latency_ms=latency, model=model,
+                error=f"openclaw timeout after {self.timeout}s",
+                error_kind=ERR_TIMEOUT)
+
+        except Exception as e:  # noqa: BLE001 — 统一收敛为 LLMResponse
+            latency = int((time.perf_counter() - t0) * 1000)
+            kind, retry_after = classify_error(e)
+            return LLMResponse(
+                content="", latency_ms=latency, model=model,
+                error=f"{type(e).__name__}: {e}",
+                error_kind=kind, retry_after=retry_after)
 
 
 # ============================================================
