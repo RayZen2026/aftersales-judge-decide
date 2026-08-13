@@ -129,14 +129,17 @@ def test_release_lock_illegal_state(write_enabled):
 # ── 结果字段映射 ──
 
 def test_build_result_fields():
-    resp = {"platform": 10, "merchant": 90}
+    resp = {"platform": 10, "merchant": 90, "logistics": 0, "agent": 0}
     out = {
-        "action": "赔付", "amount": 77.43,
+        "action": "赔付金额", "amount": 77.43,  # Schema v4: 赔付→赔付金额
         "price_uplift_result_type": "同意",     # LLM 输出不再透传，从 action 推导
         "expectation_satisfaction_type": "完全满足",
         "judgment_summary": "综合意见",
-        "judgment_basis": {"store_profile": "B级", "fact_finding": "品质问题",
+        "judgment_basis": {"store_profile": "B级", "product_quality": "A级商品",
+                           "merchant_traceability": "商家偏离3倍",
+                           "fact_finding": "品质问题",
                            "responsibility_reasoning": "商家责任",
+                           "amount_adjustment": "完全满足诉求",
                            "rule_reference": "无匹配", "decision_comparison": "赔付优先"},
         "responsibility": resp,
         "responsibility_corrected": resp,
@@ -149,6 +152,8 @@ def test_build_result_fields():
     assert fields["满足期望类型"] == "完全满足"
     assert "【判责结论】" in fields["判责报告"]
     assert "【门店画像】" in fields["判责报告"]
+    assert "【商品品质】" in fields["判责报告"]    # Phase 5 新增
+    assert "【商家追溯】" in fields["判责报告"]    # Phase 5 新增
 
 
 def test_build_result_fields_defaults():
@@ -158,9 +163,72 @@ def test_build_result_fields_defaults():
 
 
 def test_derive_submission_result():
-    """提交结果类型必须从 action 推导，不依赖 LLM 输出。"""
-    assert fb._derive_submission_result("赔付") == "同意"
+    """Schema v4: 提交结果类型必须从 action 推导，不依赖 LLM 输出。"""
+    assert fb._derive_submission_result("赔付金额") == "同意"
     assert fb._derive_submission_result("退货") == "同意"
-    assert fb._derive_submission_result("退款") == "同意"
-    assert fb._derive_submission_result("无需处理") == "拒绝"   # 核心修复：不赔付不退货才是拒绝
+    assert fb._derive_submission_result("拒绝赔付") == "拒绝"
     assert fb._derive_submission_result("需人工") == "需人工"
+
+
+def test_build_result_fields_with_4party():
+    """Phase 5: 4方责任格式化测试（物流+代理人）。"""
+    resp = {"platform": 10, "merchant": 60, "logistics": 20, "agent": 10}
+    out = {
+        "action": "赔付金额", "amount": 100.0,  # Schema v4: 赔付→赔付金额
+        "expectation_satisfaction_type": "完全满足",
+        "judgment_summary": "物流代理人共同责任",
+        "judgment_basis": {"store_profile": "A级", "product_quality": "A级",
+                           "merchant_traceability": "偏离1倍",
+                           "fact_finding": "物流损坏", "responsibility_reasoning": "4方分担",
+                           "amount_adjustment": "完全满足", "rule_reference": "规则X",
+                           "decision_comparison": "赔付"},
+        "responsibility_corrected": resp,
+    }
+    fields = fb.build_result_fields("UAS2", out)
+    assert "平台商家10:60" in fields["判责结果"]
+    assert "物流20" in fields["判责结果"]
+    assert "代理人10" in fields["判责结果"]
+    assert fields["提交结果类型"] == "同意"
+
+
+# ── Schema v4.0 新增测试 ──
+
+def test_format_judgment_result_return_with_amount():
+    """Schema v4: 退货场景输出建议赔付金额"""
+    resp = {"platform": 20, "merchant": 80, "logistics": 0, "agent": 0}
+    out = {"action": "退货", "amount": 66, "responsibility_corrected": resp}
+    result = fb._format_judgment_result(out)
+    assert "同意退货" in result
+    assert "建议赔付66元" in result
+    assert "平台商家20:80" in result
+
+
+def test_format_judgment_result_reject():
+    """Schema v4: 拒绝赔付场景"""
+    resp = {"platform": 0, "merchant": 0, "logistics": 0, "agent": 0}
+    out = {"action": "拒绝赔付", "amount": 0, "responsibility_corrected": resp}
+    result = fb._format_judgment_result(out)
+    assert "拒绝赔付" in result
+    assert "平台商家0:0" in result
+
+
+def test_build_result_fields_reject():
+    """Schema v4: 拒绝赔付完整字段"""
+    out = {
+        "action": "拒绝赔付",
+        "amount": 0,
+        "expectation_satisfaction_type": "不满足",
+        "judgment_summary": "门店价值低，复购差，拒绝赔付",
+        "judgment_basis": {
+            "store_profile": "D级", "product_quality": "正常",
+            "merchant_traceability": "正常", "fact_finding": "无举证",
+            "responsibility_reasoning": "无责任方", "amount_adjustment": "拒绝",
+            "rule_reference": "无规则", "decision_comparison": "拒绝"
+        },
+        "responsibility_corrected": {"platform": 0, "merchant": 0, "logistics": 0, "agent": 0},
+    }
+    fields = fb.build_result_fields("UAS3", out)
+    assert "拒绝赔付" in fields["判责结果"]
+    assert fields["提交结果类型"] == "拒绝"
+    assert fields["满足期望类型"] == "不满足"
+

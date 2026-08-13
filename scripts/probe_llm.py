@@ -149,7 +149,11 @@ def make_jinja_env() -> jinja2.Environment:
 
 def build_render_context(cfg: dict, sample: dict, agent: str,
                          judgment_rules: list, upstream: Optional[dict] = None) -> dict:
-    """任务字段 → 模板变量（映射表 cfg.probe.task_field_mapping，显式可审计）。"""
+    """任务字段 → 模板变量（映射表 cfg.probe.task_field_mapping，显式可审计）。
+
+    Phase 5: dimension_data扩展为{task, product, store, store_tier}结构，
+    与agent_single.py的build_context保持一致。
+    """
     mapping = cfg["probe"]["task_field_mapping"]
     task = sample["task"]
     parts = []
@@ -157,13 +161,24 @@ def build_render_context(cfg: dict, sample: dict, agent: str,
         v = task.get(fname)
         if v not in (None, ""):
             parts.append(f"{fname}：{v}")
+
+    # Phase 5: 扩展dimension_data结构（task/product/store/store_tier）
+    raw_dim = sample.get("dimension_data") or {}
+    dimension_with_task = {
+        "task": task,  # 包含商品名称/商品等级/是否严重品质问题/举证/责任方标识
+        "product": raw_dim.get("product"),
+        "store": raw_dim.get("store"),
+        "store_tier": raw_dim.get("store_tier"),
+    }
+
     ctx: dict[str, Any] = {
         "item_id": task.get("升级售后单号") or sample.get("item_id"),
         "appeal_content": "\n".join(parts) or "（无申诉内容）",
         "appeal_type": task.get(mapping["appeal_type"]),
         "appeal_amount": task.get(mapping["appeal_amount"]),
+        "paid_amount": task.get("商品实付金额"),  # Phase 5 新增
         "aftersales_type": task.get(mapping["aftersales_type"]),
-        "dimension_data": sample.get("dimension_data") or {},
+        "dimension_data": dimension_with_task,  # Phase 5 结构调整
         "judgment_rules": judgment_rules or [],
     }
     if agent in ("agent2", "agent3"):
@@ -247,13 +262,15 @@ AGENT_OUTPUT_SCHEMAS: dict[str, Any] = {
         "confidence": "number",
         "tags": "list?",
     },
-    # 1-AGENT 输出 schema v2（2026-08-12 确认拍板切 1 AGENT 后定稿）
-    # 依据: 判责结果表写字段 + ground truth 样例 + business_context §4.3 推理链
+    # 1-AGENT 输出 schema v4（2026-08-13 Schema v4.0调整）
+    # 变更: store_expected透传输入(string), action枚举调整(赔付金额|退货|需人工|拒绝赔付), 新增recommended_action
     "single": {
-        "store_expected": ("enum", ["应退货", "应赔付", "应退货或赔付", "需人工"]),
+        "store_expected": "string",  # Schema v4: 透传输入，不再枚举验证
         "store_expected_amount": "number",
-        "action": ("enum", ["赔付", "退货", "退款", "无需处理", "需人工"]),
+        "recommended_action": ("enum", ["倾向于退货", "赔付金额", "拒绝赔付"]),  # Schema v4: 新增
+        "action": ("enum", ["赔付金额", "退货", "需人工", "拒绝赔付"]),  # Schema v4: 枚举调整
         "amount": "number",
+        "amount_adjust_ratio": "number?",  # Phase 5 新增，可选
         "responsibility": "responsibility",
         "price_uplift_result_type": ("enum", ["同意", "拒绝", "需人工"]),
         "expectation_satisfaction_type": ("enum", ["完全满足", "部分满足", "不满足", "需人工"]),
@@ -266,8 +283,11 @@ AGENT_OUTPUT_SCHEMAS: dict[str, Any] = {
     },
 }
 
-JUDGMENT_BASIS_PARTS = ["store_profile", "fact_finding", "responsibility_reasoning",
-                        "rule_reference", "decision_comparison"]
+JUDGMENT_BASIS_PARTS = [
+    "store_profile", "product_quality", "merchant_traceability",  # Phase 5 新增后2个
+    "fact_finding", "responsibility_reasoning", "amount_adjustment",  # Phase 5 新增 amount_adjustment
+    "rule_reference", "decision_comparison",
+]
 
 
 def _check_field(name: str, value: Any, spec: Any) -> Optional[str]:

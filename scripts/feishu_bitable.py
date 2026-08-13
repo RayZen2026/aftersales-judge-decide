@@ -121,7 +121,11 @@ def release_lock(cfg: dict, record_id: str, target_state: str) -> dict:
 # ============================================================
 
 def _format_judgment_report(output: dict) -> str:
-    """judgment_summary + judgment_basis → 判责报告（业务人员可读详情）。"""
+    """judgment_summary + judgment_basis → 判责报告（业务人员可读详情）。
+
+    Phase 5: judgment_basis扩展为8维（store_profile/product_quality/merchant_traceability/
+    fact_finding/responsibility_reasoning/amount_adjustment/rule_reference/decision_comparison）。
+    """
     parts = []
     summary = output.get("judgment_summary") or ""
     if summary:
@@ -130,8 +134,11 @@ def _format_judgment_report(output: dict) -> str:
     if isinstance(basis, dict):
         labels = {
             "store_profile": "【门店画像】",
+            "product_quality": "【商品品质】",
+            "merchant_traceability": "【商家追溯】",
             "fact_finding": "【事实认定】",
             "responsibility_reasoning": "【责任判定】",
+            "amount_adjustment": "【金额调整】",
             "rule_reference": "【规则引用】",
             "decision_comparison": "【决策对比】",
         }
@@ -143,36 +150,58 @@ def _format_judgment_report(output: dict) -> str:
 
 
 def _format_judgment_result(output: dict) -> str:
-    """格式化简短判责结论（写入「判责结果」字段，如"同意赔付77.43，平台商家1:9"）。"""
+    """格式化简短判责结论（写入「判责结果」字段）。
+
+    Schema v4: 支持4方责任 + 新action枚举（赔付金额/退货/需人工/拒绝赔付）。
+    格式："同意赔付24.36元，平台商家10:90" 或 "同意退货，建议赔付66元，平台商家20:80"
+    """
     action = output.get("action") or "需人工"
     amount = output.get("amount") or 0
     resp = output.get("responsibility_corrected") or output.get("responsibility") or {}
+
+    # 4方责任
     platform = resp.get("platform", 0)
     merchant = resp.get("merchant", 0)
-    if action == "赔付" and amount:
-        result = f"同意赔付{amount}，平台商家{platform}:{merchant}"
-    elif action == "退货":
-        result = f"同意退货，平台商家{platform}:{merchant}"
-    elif action == "退款":
-        result = f"同意退款，平台商家{platform}:{merchant}"
-    elif action == "无需处理":
-        result = "无需处理"
+    logistics = resp.get("logistics", 0)
+    agent = resp.get("agent", 0)
+
+    # 构建责任描述
+    parts = []
+    if logistics > 0 or agent > 0:
+        # 有物流/代理人责任，分开写
+        parts.append(f"平台商家{platform}:{merchant}")
+        if logistics > 0:
+            parts.append(f"物流{logistics}")
+        if agent > 0:
+            parts.append(f"代理人{agent}")
+        resp_str = " ".join(parts)
     else:
-        result = f"需人工审核，平台商家{platform}:{merchant}"
+        # 仅平台商家，简写
+        resp_str = f"平台商家{platform}:{merchant}"
+
+    if action == "赔付金额" and amount:
+        result = f"同意赔付{amount}元，{resp_str}"
+    elif action == "退货":
+        # Schema v4: 退货时也输出建议赔付金额
+        result = f"同意退货，建议赔付{amount}元，{resp_str}" if amount else f"同意退货，{resp_str}"
+    elif action == "拒绝赔付":
+        result = f"拒绝赔付，{resp_str}"
+    else:
+        result = f"需人工审核，{resp_str}"
     return result
 
 
 def _derive_submission_result(action: str) -> str:
     """从 action 推导提交结果类型（不依赖 LLM 直接输出，防止误判）。
 
-    业务规则：
-      - 赔付 / 退货 / 退款 = 同意（门店诉求得到响应）
-      - 无需处理 = 拒绝（不赔付且不退货，门店诉求被驳回）
+    Schema v4业务规则：
+      - 赔付金额 / 退货 = 同意（门店诉求得到响应）
+      - 拒绝赔付 = 拒绝（门店诉求被驳回）
       - 需人工   = 需人工（待运营处理）
     """
-    if action in ("赔付", "退货", "退款"):
+    if action in ("赔付金额", "退货"):
         return "同意"
-    if action == "无需处理":
+    if action == "拒绝赔付":
         return "拒绝"
     return "需人工"
 

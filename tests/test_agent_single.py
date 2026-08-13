@@ -35,22 +35,26 @@ DIM = {"product": None, "store": None, "store_tier": "B"}
 RULES = [{"优先级": 10, "触发条件AST": "{...}"}]
 
 VALID_OUTPUT = {
-    "store_expected": "应赔付",
+    "store_expected": "赔付金额",  # Schema v4: 透传输入诉求类型
     "store_expected_amount": 77.43,
-    "action": "赔付",
+    "recommended_action": "赔付金额",  # Schema v4: 新增字段
+    "action": "赔付金额",  # Schema v4: 枚举调整
     "amount": 77.43,
-    "responsibility": {"platform": 10, "merchant": 90},
+    "responsibility": {"platform": 10, "merchant": 90, "logistics": 0, "agent": 0},  # Schema v4: 4方
     "price_uplift_result_type": "同意",
     "expectation_satisfaction_type": "完全满足",
-    "judgment_summary": "综合意见" * 30,
+    "judgment_summary": "同意赔付77.43元，平台10%商家90%。",  # Schema v4: ≤40字
     "judgment_basis": {
         "store_profile": "B 级门店",
+        "product_quality": "A级商品，无严重品质问题",  # Phase 5 新增
+        "merchant_traceability": "商家类目赔付率正常",  # Phase 5 新增
         "fact_finding": "商品有质量问题",
         "responsibility_reasoning": "商家全责",
+        "amount_adjustment": "完全满足诉求",  # Phase 5 新增
         "rule_reference": "无匹配规则，按兜底原则",
         "decision_comparison": "赔付成本低于退货",
     },
-    "reasoning": "判定理由" * 20,
+    "reasoning": "A级商品商家责任明确，商家偏离1.0属中等，门店B级GMV正常，举证充分。基准50%，无品质调整，门店无特殊调整，最终平台10%商家90%。诉求77元合理且≤实付，完全满足。",  # Schema v4: ≤140字
     "confidence": 0.9,
     "key_factors": ["品质问题", "商家责任"],
 }
@@ -165,7 +169,8 @@ def test_run_success():
     content = "```json\n" + json.dumps(VALID_OUTPUT, ensure_ascii=False) + "\n```"
     result = ag.run(CFG, FakeBackend(content), TASK_ROW, DIM, RULES)
     assert result.ok
-    assert result.output["responsibility_corrected"] == {"platform": 10, "merchant": 90}
+    # Phase 5: responsibility_corrected 包含4方字段
+    assert result.output["responsibility_corrected"] == {"platform": 10, "merchant": 90, "logistics": 0, "agent": 0}
     assert result.manual_review_signal is False
 
 
@@ -197,10 +202,49 @@ def test_run_manual_review_signal_action():
 
 
 def test_run_corrects_responsibility():
-    # 1:2 → 33:67
+    # 1:2 → 33:67（4方责任，logistics/agent=0）
     out = {**VALID_OUTPUT, "responsibility": {"platform": 1, "merchant": 2}}
     content = json.dumps(out, ensure_ascii=False)
     result = ag.run(CFG, FakeBackend(content), TASK_ROW, DIM, RULES)
     assert result.ok
     corrected = result.output["responsibility_corrected"]
-    assert corrected["platform"] + corrected["merchant"] == 100
+    # Phase 5: 4方和=100
+    assert corrected["platform"] + corrected["merchant"] + corrected["logistics"] + corrected["agent"] == 100
+    assert corrected == {"platform": 33, "merchant": 67, "logistics": 0, "agent": 0}
+
+
+# ── Schema v4.0 新增测试 ──
+
+def test_validate_recommended_action_enum():
+    """Schema v4: 验证recommended_action枚举"""
+    bad = {**VALID_OUTPUT, "recommended_action": "非法动作"}
+    errs = ag.validate_schema(bad)
+    assert any("recommended_action" in e for e in errs)
+
+
+def test_action_reject_with_zero_amount():
+    """Schema v4: 验证拒绝赔付时amount=0"""
+    reject_out = {
+        **VALID_OUTPUT,
+        "action": "拒绝赔付",
+        "recommended_action": "拒绝赔付",
+        "amount": 0,
+        "amount_adjust_ratio": 0,
+        "responsibility": {"platform": 0, "merchant": 0, "logistics": 0, "agent": 0},
+    }
+    errs = ag.validate_schema(reject_out)
+    assert len(errs) == 0  # 应该通过验证
+
+
+def test_action_return_with_amount():
+    """Schema v4: 验证退货时amount>0（建议赔付金额）"""
+    return_out = {
+        **VALID_OUTPUT,
+        "action": "退货",
+        "recommended_action": "倾向于退货",
+        "amount": 66,
+        "responsibility": {"platform": 20, "merchant": 80, "logistics": 0, "agent": 0},
+    }
+    errs = ag.validate_schema(return_out)
+    assert len(errs) == 0  # 应该通过验证
+

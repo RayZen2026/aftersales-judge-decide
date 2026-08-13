@@ -5,17 +5,17 @@ agent_single.py — 1-AGENT 完整流程判责（Phase 3）
 契约来源：
   - D-20260812-007: 切 1 AGENT（agent_single 融合模板），3 AGENT 方案暂停
   - D-20260807-003: 不 import probe_llm（探针/生产独立；JSON 提取/校验本模块自带）
-  - schema v2（agent_single_prompt_template.j2 v0.2.0 output 节）：
-    结论层(action/amount/responsibility{platform,merchant}/提价结果类型/满足期望类型)
-    + 期望层 + 依据层(judgment_summary/judgment_basis) + 元数据层
+  - schema v3（agent_single_prompt_template.j2 v0.3.0 output 节，Phase 5）：
+    结论层(action/amount/amount_adjust_ratio/responsibility{platform,merchant,logistics,agent}/提价结果类型/满足期望类型)
+    + 期望层 + 依据层(judgment_summary/judgment_basis{8维}) + 元数据层
   - 9 类失败映射（failure_handler 9 类 + state_machine 状态）
 
 流程：
   1. build_context: 任务行 + 维度数据 → 模板变量（config task_field_mapping）
   2. render_prompt: jinja2 渲染 agent_single_prompt_template.j2
   3. call_with_fallback: llm.DashScopeBackend（开发）/ MiaodaBackend（生产）
-  4. extract_json + validate_schema: JSON 提取 + schema v2 校验
-  5. allocate_correction: 比例校正（DRY from main.py）
+  4. extract_json + validate_schema: JSON 提取 + schema v3 校验
+  5. allocate_correction: 4方比例校正（DRY from main.py）
   6. map_failure: LLM 错误 / schema 错误 → 9 类失败类型
 
 不做：状态机推进、飞书写表、通知——均由 main.py 主流程执行。
@@ -67,20 +67,33 @@ def _get_jinja_env() -> jinja2.Environment:
 
 def build_context(cfg: dict, task_row: dict, dimension_data: dict,
                   judgment_rules: list) -> dict:
-    """任务行 + 维度数据 + 规则 → agent_single 模板变量（config task_field_mapping）。"""
+    """任务行 + 维度数据 + 规则 → agent_single 模板变量（config task_field_mapping）。
+
+    Phase 5: dimension_data 扩展为语义化分组（task/product/store/store_tier）。
+    """
     mapping = cfg["probe"]["task_field_mapping"]
     parts = []
     for fname in mapping["appeal_content_fields"]:
         v = task_row.get(fname)
         if v not in (None, "", "-1", -1):
             parts.append(f"{fname}：{v}")
+
+    # 扩展 dimension_data 包含任务表字段（商品品质/责任方标识）
+    dimension_with_task = {
+        "task": task_row,  # 包含商品名称/商品等级/是否严重品质问题/举证/责任方标识
+        "product": dimension_data.get("product"),
+        "store": dimension_data.get("store"),
+        "store_tier": dimension_data.get("store_tier"),
+    }
+
     return {
         "item_id": task_row.get("升级售后单号"),
         "appeal_content": "\n".join(parts) or "（无申诉内容）",
         "appeal_type": task_row.get(mapping["appeal_type"]),
         "appeal_amount": task_row.get(mapping["appeal_amount"]),
+        "paid_amount": task_row.get("商品实付金额"),  # Phase 5 新增
         "aftersales_type": task_row.get(mapping["aftersales_type"]),
-        "dimension_data": dimension_data,
+        "dimension_data": dimension_with_task,  # Phase 5 结构调整
         "judgment_rules": judgment_rules,
     }
 
@@ -98,10 +111,12 @@ class AgentFormatError(ValueError):
 
 
 REQUIRED_FIELDS = {
-    "store_expected": ("enum", ["应退货", "应赔付", "应退货或赔付", "需人工"]),
+    "store_expected": "string",  # Schema v4: 透传输入，不再枚举验证
     "store_expected_amount": "number",
-    "action": ("enum", ["赔付", "退货", "退款", "无需处理", "需人工"]),
+    "recommended_action": ("enum", ["倾向于退货", "赔付金额", "拒绝赔付"]),  # Schema v4: 新增
+    "action": ("enum", ["赔付金额", "退货", "需人工", "拒绝赔付"]),  # Schema v4: 枚举调整
     "amount": "number",
+    "amount_adjust_ratio": "number?",  # Phase 5 新增，可选（默认1.0）
     "responsibility": "responsibility",
     "price_uplift_result_type": ("enum", ["同意", "拒绝", "需人工"]),
     "expectation_satisfaction_type": ("enum", ["完全满足", "部分满足", "不满足", "需人工"]),
@@ -113,7 +128,8 @@ REQUIRED_FIELDS = {
 }
 
 JUDGMENT_BASIS_PARTS = [
-    "store_profile", "fact_finding", "responsibility_reasoning",
+    "store_profile", "product_quality", "merchant_traceability",  # Phase 5 新增后2个
+    "fact_finding", "responsibility_reasoning", "amount_adjustment",  # Phase 5 新增 amount_adjustment
     "rule_reference", "decision_comparison",
 ]
 
@@ -178,10 +194,11 @@ def _check_field(name: str, value: Any, spec: Any) -> Optional[str]:
     if base == "responsibility":
         if not isinstance(value, dict):
             return f"类型错: {name} 应为 dict"
+        # Phase 5: 4方责任（platform/merchant/logistics/agent）
         errs = [f"类型错: {name}.{k} 应为 number"
-                for k in ("platform", "merchant")
-                if isinstance(value.get(k), bool) or
-                not isinstance(value.get(k), (int, float))]
+                for k in ("platform", "merchant", "logistics", "agent")
+                if k in value and (isinstance(value.get(k), bool) or
+                   not isinstance(value.get(k), (int, float)))]
         return "; ".join(errs) if errs else None
     if base == "judgment_basis":
         if not isinstance(value, dict):
@@ -284,7 +301,8 @@ def run(cfg: dict, backend, task_row: dict, dimension_data: dict,
 
     # 需人工信号检测（规则无匹配 / 信息不足）
     manual = (obj.get("action") == "需人工" or
-              corrected == {"platform": 0, "merchant": 0})
+              corrected.get("platform", 0) + corrected.get("merchant", 0) +
+              corrected.get("logistics", 0) + corrected.get("agent", 0) == 0)
 
     return AgentResult(ok=True, output=obj, llm_response=llm_res,
                        prompt=prompt, manual_review_signal=manual)
