@@ -92,10 +92,10 @@ def acquire_fields() -> dict[str, str]:
 def release_fields(target_state: str) -> dict[str, str]:
     """释放写入载荷：处理状态 → 终态值（更新时间保留历史，不清除）。
 
-    target_state ∈ completed/failed/manual_review（config lock.release_states）。
+    target_state ∈ completed/failed/manual_review/pending（config lock.release_states + 字段缺失回退）。
     """
     from state_machine import to_table_value  # 延迟 import 避免顶层耦合
-    if target_state not in ("completed", "failed", "manual_review"):
+    if target_state not in ("completed", "failed", "manual_review", "pending"):
         raise ValueError(f"释放目标状态非法: {target_state}（release_states 已锁）")
     return {TASK_STATUS_FIELD: to_table_value(target_state)}
 

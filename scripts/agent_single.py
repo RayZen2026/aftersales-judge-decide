@@ -261,9 +261,15 @@ def run(cfg: dict, backend, task_row: dict, dimension_data: dict,
     backend: DashScopeBackend（开发）或 MiaodaBackend（生产，Phase 4）。
     返回 AgentResult；异常全部收敛到 AgentResult.failure_type，不上抛。
     """
+    from llm import select_chain, dev_chain  # noqa: PLC0415
+
     ctx = build_context(cfg, task_row, dimension_data, judgment_rules)
     prompt = render_prompt(ctx)
-    chain = dev_chain(cfg)  # 开发期单模型；Phase 4 接生产链用 select_chain(cfg, "single")
+
+    # 根据环境选择chain：生产用降级链，开发用单模型
+    use_prod = cfg.get("llm", {}).get("use_production_chain", False)
+    chain = select_chain(cfg, "single") if use_prod else dev_chain(cfg)
+
     params = cfg["llm"]["params"]
     retry_cfg = cfg["llm"]["retry"]
 

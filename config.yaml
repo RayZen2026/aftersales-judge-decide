@@ -23,7 +23,7 @@
 #   筛选: storage 目标必填=true (2026-08-10 04:17)
 
 task_table:
-  app_token: U7XQbSEq6axXfJsj2QocRxlQnqb
+  app_token: ${BITABLE_APP_TOKEN_BUSINESS}
   table_id: tblEMESCIIr4pqz8
   source_url: https://bggc.feishu.cn/wiki/IM07wGjh9iVU64kNu8gcjirQn0K?table=tblEMESCIIr4pqz8
   fetch_view:                              # 拉取范围 = 视图「近两天数据」（确认 2026-08-12 拍板，不拉全量）
@@ -106,7 +106,7 @@ task_table:
 
 dimensions:
   result_table:
-    app_token: HGDzb2h7MaydFxsqlyAcCpALnB1
+    app_token: ${BITABLE_APP_TOKEN_FIELDS}
     table_id: tblQFKdViDyghC65
     source_url: https://bggc.feishu.cn/wiki/QtV8wiiSuikve7kOzaKcS4tEnXb?table=tblQFKdViDyghC65&view=vewWdG3ptr
     primary_key_name: 升级售后单号
@@ -128,13 +128,13 @@ dimensions:
       name: 判责报告
       description: 判责依据详情（judgment_summary + judgment_basis，供业务人员查阅）
   test_result_table:                                # Phase 4 端到端独立测试表
-    app_token: HGDzb2h7MaydFxsqlyAcCpALnB1
+    app_token: ${BITABLE_APP_TOKEN_FIELDS}
     table_id: tblQ1btbmJsBESGd
     source_url: https://bggc.feishu.cn/wiki/QtV8wiiSuikve7kOzaKcS4tEnXb?table=tblQ1btbmJsBESGd&view=vewWdG3ptr
     primary_key_name: 升级售后单号
     primary_key_id: fld2kYC6CJ
   product_dimension_table:
-    app_token: HGDzb2h7MaydFxsqlyAcCpALnB1
+    app_token: ${BITABLE_APP_TOKEN_FIELDS}
     table_id: tblkP6fdG2OxN8JP
     source_url: https://bggc.feishu.cn/wiki/QtV8wiiSuikve7kOzaKcS4tEnXb?table=tblkP6fdG2OxN8JP&view=vewtGin7Xb
     primary_key:
@@ -198,7 +198,7 @@ dimensions:
       name: m8到m5日均售后单数量
       description: T-8到T-5每日提交的售后单去重数量合计/T-8到T-5商品有交易的天数
   store_table:
-    app_token: HGDzb2h7MaydFxsqlyAcCpALnB1
+    app_token: ${BITABLE_APP_TOKEN_FIELDS}
     table_id: tblHJNJq8IEhlOs3
     source_url: https://bggc.feishu.cn/wiki/QtV8wiiSuikve7kOzaKcS4tEnXb?table=tblHJNJq8IEhlOs3&view=vewEOGawDa
     primary_key_name: 店铺id
@@ -274,7 +274,7 @@ dimensions:
 ast_rules:
   store_tier:                              # 阶段 2 batch 消费
     fetch:                                  # 应用层自己 lark-cli 拉
-      app_token: HGDzb2h7MaydFxsqlyAcCpALnB1
+      app_token: ${BITABLE_APP_TOKEN_RULES}
       table_id: tbllJ5aMjBhYRjIs           # 2026-08-12 修复笔误（旧值 tbllJ5aMajBhYRjIs 实测 not_found）
       source_url: https://bggc.feishu.cn/wiki/QtV8wiiSuikve7kOzaKcS4tEnXb?table=tbllJ5aMjBhYRjIs&view=vewQEBYm73
       sort:
@@ -292,7 +292,7 @@ ast_rules:
     
   aftersales_judgment:                     # 阶段 3 per-item 消费（AGENT 2 prompt 注入）
     fetch:                                  # 应用层自己 lark-cli 拉
-      app_token: HGDzb2h7MaydFxsqlyAcCpALnB1
+      app_token: ${BITABLE_APP_TOKEN_RULES}
       table_id: tblty9QJT2g7caeg
       source_url: https://bggc.feishu.cn/wiki/QtV8wiiSuikve7kOzaKcS4tEnXb?table=tblty9QJT2g7caeg&view=...
       filter:
@@ -330,6 +330,7 @@ magic_numbers:
   manual_review_threshold: null
 
 llm:
+  use_production_chain: false             # true=生产降级链(shared_chain)，false=开发单模型(dev)；部署时改true
   shared_chain:
   - miaoda/glm-5.1
   - miaoda/qwen-3.7-plus
