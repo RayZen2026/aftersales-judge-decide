@@ -229,8 +229,18 @@ def build_result_fields(order_id: str, output: dict, test_mode: bool = False) ->
 
     # 测试表扩展字段（10个）
     if test_mode:
+        # 建议动作：映射LLM输出到飞书select选项名称
+        recommended = output.get("recommended_action") or "赔付金额"
+        # LLM输出格式: "倾向于X" → 飞书选项: "X"
+        if "退货" in recommended:
+            recommended_select = "退货"
+        elif "拒绝" in recommended or "拒绝赔付" in recommended:
+            recommended_select = "拒绝赔付"
+        else:
+            recommended_select = "赔付金额"
+
         fields.update({
-            "建议动作": output.get("recommended_action") or "赔付金额",
+            "建议动作": recommended_select,
             "门店画像": basis.get("store_profile") or "",
             "商品品质": basis.get("product_quality") or "",
             "商家追溯": basis.get("merchant_traceability") or "",

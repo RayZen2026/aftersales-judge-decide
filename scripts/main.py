@@ -389,14 +389,18 @@ def process_item(cfg: dict, sample: dict, record_id: str,
     now = datetime.now(CST)
     stale_min = cfg["lock"]["stale_minutes"]
 
-    # 抢锁（防御性）
-    state = from_table_value(task_row.get("处理状态") or "未处理")
-    lock_check = check_lockable(state, task_row.get("更新时间"), now, stale_min)
-    if not lock_check.acquirable:
-        logger.info("跳过 %s: %s", item_id, lock_check.reason)
-        return state
-    fb.acquire_lock(cfg, record_id)
-    logger.info("已抢锁 %s (%s)", item_id, lock_check.reason)
+    # test_mode: 跳过抢锁逻辑（测试表独立，可重复运行）
+    if not test_mode:
+        # 抢锁（防御性）
+        state = from_table_value(task_row.get("处理状态") or "未处理")
+        lock_check = check_lockable(state, task_row.get("更新时间"), now, stale_min)
+        if not lock_check.acquirable:
+            logger.info("跳过 %s: %s", item_id, lock_check.reason)
+            return state
+        fb.acquire_lock(cfg, record_id)
+        logger.info("已抢锁 %s (%s)", item_id, lock_check.reason)
+    else:
+        logger.info("test_mode: 跳过抢锁，直接处理 %s", item_id)
 
     # 字段匹配检验
     missing = _check_required_fields(task_row)
@@ -415,7 +419,8 @@ def process_item(cfg: dict, sample: dict, record_id: str,
     if not result.ok:
         decision = decide(result.failure_type or "llm_ability_exceeded")
         target = decision.target_state
-        fb.release_lock(cfg, record_id, target)
+        if not test_mode:
+            fb.release_lock(cfg, record_id, target)
         if decision.notify:
             notify(cfg, notify_dedup, item_id, result.failure_type or "llm_ability_exceeded",
                    "; ".join(result.format_errors or [result.failure_type or ""]), now)
@@ -427,7 +432,8 @@ def process_item(cfg: dict, sample: dict, record_id: str,
     # 成功或需人工（manual_review_signal）
     if result.manual_review_signal:
         target = "manual_review"
-        fb.release_lock(cfg, record_id, target)
+        if not test_mode:
+            fb.release_lock(cfg, record_id, target)
         notify(cfg, notify_dedup, item_id, "rule_conflict",
                "规则无匹配或模型判定需人工", now)
         if result.output:
@@ -436,7 +442,8 @@ def process_item(cfg: dict, sample: dict, record_id: str,
         return target
 
     # 成功终态
-    fb.release_lock(cfg, record_id, "completed")
+    if not test_mode:
+        fb.release_lock(cfg, record_id, "completed")
     _write_result(cfg, fb, item_id, result.output, test_mode=test_mode)
     logger.info("%s 完成: action=%s amount=%s",
                 item_id,
