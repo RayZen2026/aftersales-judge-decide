@@ -132,6 +132,7 @@ def test_build_result_fields():
     resp = {"platform": 10, "merchant": 90, "logistics": 0, "agent": 0}
     out = {
         "action": "赔付金额", "amount": 77.43,  # Schema v4: 赔付→赔付金额
+        "recommended_action": "赔付金额",  # Schema v4: 新增字段
         "price_uplift_result_type": "同意",     # LLM 输出不再透传，从 action 推导
         "expectation_satisfaction_type": "完全满足",
         "judgment_summary": "综合意见",
@@ -143,6 +144,7 @@ def test_build_result_fields():
                            "rule_reference": "无匹配", "decision_comparison": "赔付优先"},
         "responsibility": resp,
         "responsibility_corrected": resp,
+        "key_factors": ["品质问题", "商家责任"],
     }
     fields = fb.build_result_fields("UAS1", out)
     assert fields["升级售后单号"] == "UAS1"
@@ -154,6 +156,50 @@ def test_build_result_fields():
     assert "【门店画像】" in fields["判责报告"]
     assert "【商品品质】" in fields["判责报告"]    # Phase 5 新增
     assert "【商家追溯】" in fields["判责报告"]    # Phase 5 新增
+
+
+def test_build_result_fields_test_mode():
+    """测试表模式：输出15字段（生产表5字段 + 扩展10字段）"""
+    resp = {"platform": 10, "merchant": 90, "logistics": 0, "agent": 0}
+    out = {
+        "action": "赔付金额", "amount": 77.43,
+        "recommended_action": "赔付金额",
+        "expectation_satisfaction_type": "完全满足",
+        "judgment_summary": "综合意见",
+        "judgment_basis": {
+            "store_profile": "B级门店",
+            "product_quality": "A级商品",
+            "merchant_traceability": "商家偏离3倍",
+            "fact_finding": "品质问题明确",
+            "responsibility_reasoning": "商家全责",
+            "amount_adjustment": "完全满足诉求",
+            "rule_reference": "无匹配规则",
+            "decision_comparison": "赔付优先",
+        },
+        "responsibility_corrected": resp,
+        "key_factors": ["品质问题", "商家责任"],
+    }
+    fields = fb.build_result_fields("UAS1", out, test_mode=True)
+
+    # 生产表基础字段（5个）
+    assert fields["升级售后单号"] == "UAS1"
+    assert fields["判责结果"] == "同意赔付77.43元，平台商家10:90"
+    assert fields["提交结果类型"] == "同意"
+    assert fields["满足期望类型"] == "完全满足"
+    assert "【判责结论】" in fields["判责报告"]
+
+    # 测试表扩展字段（10个）
+    assert fields["建议动作"] == "赔付金额"
+    assert fields["门店画像"] == "B级门店"
+    assert fields["商品品质"] == "A级商品"
+    assert fields["商家追溯"] == "商家偏离3倍"
+    assert fields["事实认定"] == "品质问题明确"
+    assert fields["责任判定"] == "商家全责"
+    assert fields["金额调整"] == "完全满足诉求"
+    assert fields["规则引用"] == "无匹配规则"
+    assert fields["决策对比"] == "赔付优先"
+    assert fields["关键因素"] == "品质问题, 商家责任"
+
 
 
 def test_build_result_fields_defaults():

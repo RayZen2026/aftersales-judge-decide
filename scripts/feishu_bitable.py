@@ -206,22 +206,40 @@ def _derive_submission_result(action: str) -> str:
     return "需人工"
 
 
-def build_result_fields(order_id: str, output: dict) -> dict:
-    """1-AGENT 输出 schema v2 → 判责结果表写入字段（5 字段，2026-08-12 实查对齐）。
+def build_result_fields(order_id: str, output: dict, test_mode: bool = False) -> dict:
+    """1-AGENT 输出 schema v4 → 判责结果表写入字段。
 
-    字段映射：
-      升级售后单号  ← order_id
-      判责结果      ← 简短格式化结论（如"同意赔付77.43，平台商家1:9"）
-      提交结果类型  ← 从 action 推导（同意/拒绝/需人工），不透传 LLM 输出
-                      赔付/退货/退款 → 同意；无需处理 → 拒绝；需人工 → 需人工
-      满足期望类型  ← expectation_satisfaction_type（完全满足/部分满足/不满足/需人工）
-      判责报告      ← judgment_summary + judgment_basis 格式化（业务人员查阅）
+    生产表（5字段，test_mode=False）：
+      升级售后单号、判责结果、提交结果类型、满足期望类型、判责报告
+
+    测试表（15字段，test_mode=True，2026-08-13扩展）：
+      生产表5字段 + 建议动作 + judgment_basis 8维 + 关键因素
     """
     action = output.get("action") or "需人工"
-    return {
+    basis = output.get("judgment_basis") or {}
+
+    # 生产表基础字段（5个）
+    fields = {
         "升级售后单号": order_id,
         "判责结果": _format_judgment_result(output),
         "提交结果类型": _derive_submission_result(action),
         "满足期望类型": output.get("expectation_satisfaction_type") or "需人工",
         "判责报告": _format_judgment_report(output),
     }
+
+    # 测试表扩展字段（10个）
+    if test_mode:
+        fields.update({
+            "建议动作": output.get("recommended_action") or "赔付金额",
+            "门店画像": basis.get("store_profile") or "",
+            "商品品质": basis.get("product_quality") or "",
+            "商家追溯": basis.get("merchant_traceability") or "",
+            "事实认定": basis.get("fact_finding") or "",
+            "责任判定": basis.get("responsibility_reasoning") or "",
+            "金额调整": basis.get("amount_adjustment") or "",
+            "规则引用": basis.get("rule_reference") or "",
+            "决策对比": basis.get("decision_comparison") or "",
+            "关键因素": ", ".join(output.get("key_factors") or []),
+        })
+
+    return fields
