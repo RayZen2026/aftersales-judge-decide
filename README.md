@@ -104,6 +104,62 @@ SKILL 上线后**只暴露** `auto` / `manual` 2 个用户使用模式。`probe`
 
 **遗留风险（转 Phase 3 回归 + Phase 5 观察期）**：一致性 12.5% 仍超 5%；准确率未正式评估（GT 仅 4 单）；比例偏差；latency 贴近预算。
 
+## Phase 5: 迭代记录（2026-08-13）
+
+### v0.6.0 Prompt 优化（累加计算公式）
+- **目标**: 消除 v0.5.0 的 20:80 固定模式偏差
+- **方案**: 应用累加计算公式（单向调整表述，避免"平台+X商家-X"相抵歧义）
+- **成果**: 20:80 固定模式 100% → 0%（9/9 样本验证）
+- **新问题**: 30% 平台比例锚定效应（9/9 样本平台比例均为 30%）
+- **根因**: Prompt 中"治理义务 10-30%"描述过强，LLM 默认输出 30%
+
+### Schema v4.0 完成（2026-08-13）
+- **store_expected/store_expected_amount**: 改为透传输入（不判断）
+- **action 枚举**: 赔付→赔付金额，增加"拒绝赔付"，移除"退款"/"无需处理"
+- **amount**: 所有场景都输出（退货=建议赔付金额，拒绝赔付=0）
+- **recommended_action**: 新增字段（倾向于退货/赔付金额/拒绝赔付）
+- **judgment_summary**: 字数压缩至 ≤40字（仅结果）
+- **reasoning**: 字数压缩至 ≤140字（判责报告给业务人员）
+- **responsibility**: 支持 4 方责任（platform/merchant/logistics/agent）
+
+### 端到端流程验证（2026-08-13）
+- **验证目标**: 主流程（Stage1-4）无卡点
+- **测试样本**: 3 条真实工单（UAS124827052384735292 / UAS124826525001334874 / UAS124820506573553731）
+- **成果**: ✅ 100% 成功（3/3）
+  - Stage1: 任务表拉取正常（视图「近两天数据」）
+  - Stage2: 维度 JOIN 全部命中（商品维度/门店维度/门店分层/判责规则）
+  - Stage3: LLM 判责（1-AGENT）Schema v4.0 合规率 100%
+  - Stage4: 测试表写入（15 字段含 judgment_basis 8 维展开）
+- **test_mode 功能**: 
+  - 跳过抢锁/释放锁（可重复运行）
+  - 写测试表而非生产表
+  - 独立于任务表状态
+
+### test_mode 实现（2026-08-13）
+- **代码修改**:
+  - `scripts/main.py`: process_item 增加 test_mode 参数，跳过锁操作
+  - `scripts/main.py`: cmd_manual 支持 --test-mode 标志
+  - `scripts/feishu_bitable.py`: build_result_fields 支持 test_mode（15 字段映射）
+  - `config.yaml`: 新增 test_result_table 配置
+- **测试表配置**:
+  - 表名: 升级售后结果表-测试使用
+  - app_token: HGDzb2h7MaydFxsqlyAcCpALnB1
+  - table_id: tblQ1btbmJsBESGd
+  - URL: https://bggc.feishu.cn/wiki/QtV8wiiSuikve7kOzaKcS4tEnXb?table=tblQ1btbmJsBESGd&view=vewWdG3ptr
+- **测试表字段（15 个）**: 生产表 5 字段 + 建议动作 + judgment_basis 8 维展开 + 关键因素
+
+### 30% 锚定效应分析（2026-08-13）
+- **现象**: 9/9 样本平台比例均为 30%（v0.6.0 探针）
+- **边界条件发现**: 1/12 样本突破锚定输出 20%（严重品质问题场景 is_severe_quality=1）
+- **根因**: LLM 理解"治理义务 10-30%"为优先级高于累加计算的"强制调整"
+- **下一步**: v0.7.0 Prompt 优化（弱化"治理义务"锚定 + 禁止覆盖累加结果）
+
+### Phase 5 待完成项
+- [ ] v0.7.0 Prompt 优化（消除 30% 锚定）
+- [ ] GT 样本扩充（4 条 → 20+ 条）
+- [ ] 准确率正式评估（责任比例准确率 ≥70%）
+- [ ] 观察期数据收集（98 次 cron 触发）
+
 ## v2 规范引用（SKILL 撰写规范，不进 SKILL.md body）
 
 | 规范 | 用途 | 章节 |
@@ -144,6 +200,9 @@ SKILL 上线后**只暴露** `auto` / `manual` 2 个用户使用模式。`probe`
 | **LCE-20260812-001** | 教训 | formula 字段返回字符串数字（30日售后赔付率='0.073...'）→ apply_tier 前必须数值 coerce | 实查 |
 | **LCE-20260812-002** | 教训 | lark-cli envelope 双形态（外层 {ok,data} vs 裸 envelope）→ 解析必须防御解包 | 实查 |
 | **LCE-20260812-003** | 教训 | 任务表/维度表 datetime 格式不一致（T00:00+08 vs T08:00+08）→ JOIN 按日期级匹配 | 实查 |
+| **D-20260813-001** | 决策 | test_mode 功能实现：manual 命令支持 --test-mode 标志，写测试表（15 字段含 judgment_basis 8 维展开），跳过抢锁逻辑，可重复运行 | 确认 |
+| **D-20260813-002** | 决策 | Schema v4.0 完成：recommended_action 新增字段，action 枚举调整（赔付金额/退货/拒绝赔付/需人工），store_expected/store_expected_amount 透传输入，judgment_summary ≤40 字，reasoning ≤140 字，支持 4 方责任 | 确认 |
+| **D-20260813-003** | 决策 | 端到端流程验证通过（3/3 样本），主流程无卡点，可专注 LLM 优化；测试表 15 字段全部正确写入 | 确认 |
 
 ## 阻塞项（确认 review 时一次性提供）
 

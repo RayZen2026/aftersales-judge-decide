@@ -80,6 +80,9 @@ python3 {baseDir}/scripts/main.py auto
 
 # 手动模式（指定单号单条处理）
 python3 {baseDir}/scripts/main.py manual --item-id <升级售后单号>
+
+# 测试模式（写测试表，可重复运行，开发/测试期）
+python3 {baseDir}/scripts/main.py manual --item-id <升级售后单号> --test-mode
 ```
 
 ## Preflight
@@ -122,15 +125,44 @@ FEISHU_NOTIFY_ENABLED=1      # 开启飞书私聊通知（开发期不设则只�
 
 ## Formatter
 
-判责结果写入飞书判责结果表（5 字段），运营通过飞书查阅：
+判责结果写入飞书判责结果表，运营通过飞书查阅：
+
+### 生产表（5 字段，正常运行）
 
 | 字段 | 示例 | 说明 |
 |---|---|---|
 | 升级售后单号 | UAS124632640199344143 | 主键，关联任务表 |
-| 判责结果 | 同意赔付24.36，平台商家10:90 | 简短结论（action + 金额 + 平台:商家比例）|
+| 判责结果 | 同意赔付24.36元，平台商家10:90 | 简短结论（action + 金额 + 责任比例）<br/>支持4方责任：平台/商家/物流/代理人 |
 | 提交结果类型 | 同意 / 拒绝 / 需人工 | 对门店诉求的最终处置 |
 | 满足期望类型 | 完全满足 / 部分满足 / 不满足 / 需人工 | 与门店期望的对齐程度 |
-| 判责报告 | 【判责结论】...【门店画像】...【责任判定】... | 完整判责依据，5 部分，供业务人员解释判责结果 |
+| 判责报告 | 【判责结论】...【门店画像】...【责任判定】... | 完整判责依据（8部分），供业务人员解释判责结果 |
+
+**判责结果格式示例**（Schema v4.0）:
+- 2方赔付: "同意赔付24.36元，平台商家10:90"
+- 3方赔付: "同意赔付42元，平台30%、商家40%、物流30%"
+- 退货场景: "同意退货，建议赔付107.43元，平台商家20:80"
+- 拒绝场景: "拒绝赔付，平台商家30:70"
+
+**判责报告8部分**:
+1. 判责结论 (judgment_summary, ≤40字)
+2. 门店画像 (store_profile)
+3. 商品品质 (product_quality)
+4. 商家追溯 (merchant_traceability)
+5. 事实认定 (fact_finding)
+6. 责任判定 (responsibility_reasoning)
+7. 金额调整 (amount_adjustment)
+8. 规则引用 (rule_reference)
+9. 决策对比 (decision_comparison)
+
+### 测试表（15 字段，--test-mode 开发/测试期）
+
+测试表包含生产表 5 字段 + 扩展 10 字段:
+- **建议动作** (recommended_action): 倾向于退货/赔付金额/拒绝赔付
+- **judgment_basis 8维展开**: 将判责报告的 8 个部分拆分为独立字段
+- **关键因素** (key_factors): 提炼的决策关键点
+
+**用途**: 开发/测试期查看 LLM 推理过程，便于 prompt 优化和质量分析  
+**测试表 URL**: https://bggc.feishu.cn/wiki/QtV8wiiSuikve7kOzaKcS4tEnXb?table=tblQ1btbmJsBESGd&view=vewWdG3ptr
 
 任务表同步更新处理状态：
 

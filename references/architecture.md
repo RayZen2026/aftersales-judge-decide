@@ -124,6 +124,68 @@ WHERE 处理状态 IN ('已处理-处理中', '已处理-失败')
 - **切 1 AGENT 不变项**:5 状态机 / 9 类失败 / 抢锁 / 写表规则 / cron / 通知 / 分配校正(纯数学)/ 门店分层 AST(batch)
 - 业务背景与完整决策表见 `references/business_context.md` §5
 
+### 3.6 1-AGENT 架构（2026-08-12 拍板实施，2026-08-13 完成）
+
+**决策来源**: D-20260812-007（切 1 AGENT），融合原 3 AGENT 的所有职责
+
+**输入**:
+- 升级售后单（任务表字段）
+- JOIN 后的维度数据（商品维度统计表 + 门店维度统计表）
+- 门店分层结果（A/B/C/D/其他，由 store-tier-rules SKILL 的 apply_tier 函数批量计算）
+- 判责规则 AST（解析层产物，按优先级遍历，仅 prompt 引用）
+
+**输出**（Schema v4.0，2026-08-13 完成）:
+- **结论层**: 
+  - action（赔付金额/退货/拒绝赔付/需人工）
+  - amount（所有场景都输出：赔付=实际金额，退货=建议赔付金额，拒绝=0）
+  - responsibility（4 方责任：platform/merchant/logistics/agent，和=100 或全=0）
+- **期望层**: 
+  - store_expected（透传输入诉求类型：退货/赔付金额/退货或者赔付金额）
+  - store_expected_amount（透传输入诉求金额）
+- **推理层**: 
+  - judgment_basis（8 维展开，面向业务人员可读）:
+    1. store_profile（门店画像）
+    2. product_quality（商品品质）
+    3. merchant_traceability（商家追溯）
+    4. fact_finding（事实认定）
+    5. responsibility_reasoning（责任判定）
+    6. amount_adjustment（金额调整）
+    7. rule_reference（规则引用）
+    8. decision_comparison（决策对比）
+  - judgment_summary（判责结论，≤40 字）
+  - reasoning（判责报告，≤140 字，格式化为长文本）
+- **元数据层**: 
+  - expectation_satisfaction_type（完全满足/部分满足/不满足/需人工）
+  - recommended_action（倾向于退货/赔付金额/拒绝赔付）
+  - key_factors（提炼的决策关键点数组）
+
+**LLM 调用**: 
+- 开发: DashScope qwen-plus-latest（单模型占位）
+- 生产: 妙搭 4+2 降级链（glm-5.1 → qwen-3.7-plus → doubao-seed-2.0-pro → minimax-m3）
+
+**prompt 模板**: `assets/agent_single_prompt_template.j2`（v0.6.0，累加计算公式）
+
+**责任比例校正**: allocate_correction（纯数学，不调 LLM）
+- 4 方和 = 100（或全 = 0，拒绝赔付场景）
+- 平台约束：10% ≤ platform ≤ 50%
+- 校正逻辑：LLM 输出 → responsibility_corrected
+
+**关键特性**:
+- 融合原 3 AGENT 职责（门店期望判定 + 承担方比例判责 + 综合判责意见）
+- judgment_basis 8 维独立输出（测试表 15 字段扩展，生产表格式化为判责报告）
+- 字数压缩：judgment_summary ≤40 字，reasoning ≤140 字
+- Schema v4.0 支持 4 方责任（platform/merchant/logistics/agent）
+
+**已验证**（2026-08-13）:
+- 端到端流程验证通过（3/3 样本）
+- Schema v4.0 合规率 100%
+- 测试表 15 字段全部正确写入
+- 主流程无卡点（Stage1-4）
+
+**待优化**（Phase 5）:
+- 30% 平台比例锚定效应（v0.7.0 Prompt 优化）
+- 准确率正式评估（GT 扩充至 20+ 条）
+
 ## 4. 关键决策(D-20260806-001 ~ 013 + D-20260807-001 ~ 004)
 
 | 决策 ID | 标题 | 核心结论 |
