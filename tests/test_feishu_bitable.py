@@ -123,7 +123,7 @@ def test_release_lock_writes_terminal(write_enabled, capture_calls, state, value
 
 def test_release_lock_illegal_state(write_enabled):
     with pytest.raises(ValueError):
-        fb.release_lock(CFG, "recA", "pending")
+        fb.release_lock(CFG, "recA", "garbage")  # 改为非法 state
 
 
 # ── 结果字段映射 ──

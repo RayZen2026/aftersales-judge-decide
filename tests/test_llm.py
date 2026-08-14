@@ -231,6 +231,8 @@ def test_dashscope_backend_requires_key(monkeypatch):
         llm.DashScopeBackend(CFG)
 
 
-def test_miaoda_backend_placeholder():
-    with pytest.raises(NotImplementedError, match="Phase 4"):
-        llm.MiaodaBackend(CFG)
+def test_miaoda_backend_init():
+    """测试 MiaodaBackend 初始化读取配置"""
+    backend = llm.MiaodaBackend(CFG)
+    assert backend.timeout == 120  # 从 CFG["llm"]["timeout_seconds"] 读取（默认120，Issue #22修复）
+    assert backend.max_tokens_cap == 30000  # 从 CFG["llm"]["params"]["max_tokens"] 读取

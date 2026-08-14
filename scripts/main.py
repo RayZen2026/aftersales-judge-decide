@@ -157,12 +157,79 @@ def _pf_cron_registered(check: dict, cfg: dict) -> tuple[bool, str]:
 
 
 def run_preflight(cfg: dict) -> list[dict]:
-    """运行 config.yaml preflight 块的 5 项检查。
+    """运行 config.yaml preflight 块的 5 项检查 + 环境一致性检查。
 
     返回 [{name, ok, message}]；abort 级失败抛 PreflightError。
     开发期 load_config 未做 ${VAR} 替换时部分检查会因 env 缺失而 warn。
     """
     results = []
+
+    # 【新增】环境一致性检查（优先执行，在所有其他检查之前）
+    env = cfg.get("environment", "").lower()
+    use_prod_chain = cfg.get("llm", {}).get("use_production_chain", False)
+
+    if env == "production":
+        # 生产必须用生产链
+        if not use_prod_chain:
+            results.append({
+                "name": "environment_consistency",
+                "ok": False,
+                "level": "abort",
+                "message": "生产环境必须 use_production_chain=true；当前 ENV=production 但 llm.use_production_chain=false"
+            })
+            summary = "\n".join(f"  [{r['level'].upper()}] {r['name']}: {r['message']}"
+                                for r in results)
+            raise PreflightError(f"preflight 检查失败（abort），启动中止：\n{summary}")
+        results.append({
+            "name": "environment_consistency",
+            "ok": True,
+            "level": "ok",
+            "message": "环境一致性检查通过（production + use_production_chain=true）"
+        })
+        logger.info("✅ 环境一致性检查通过（production + use_production_chain=true）")
+
+    elif env == "development":
+        # 开发环境警告（允许但提醒）
+        if use_prod_chain:
+            results.append({
+                "name": "environment_consistency",
+                "ok": True,
+                "level": "warn",
+                "message": "开发环境检测到 use_production_chain=true（非典型配置）"
+            })
+            logger.warning("⚠️ 开发环境检测到 use_production_chain=true（非典型配置）")
+        else:
+            results.append({
+                "name": "environment_consistency",
+                "ok": True,
+                "level": "ok",
+                "message": "环境一致性检查通过（development）"
+            })
+            logger.info("✅ 环境一致性检查通过（development）")
+
+    elif env == "staging":
+        # staging 允许两种配置（灵活）
+        results.append({
+            "name": "environment_consistency",
+            "ok": True,
+            "level": "ok",
+            "message": f"环境一致性检查通过（staging, use_production_chain={use_prod_chain}）"
+        })
+        logger.info(f"✅ 环境一致性检查通过（staging, use_production_chain={use_prod_chain}）")
+
+    else:
+        # ENV 缺失或非法
+        results.append({
+            "name": "environment_consistency",
+            "ok": False,
+            "level": "abort",
+            "message": f"ENV 环境变量非法或缺失: '{env}'；必须设置为 development | production | staging"
+        })
+        summary = "\n".join(f"  [{r['level'].upper()}] {r['name']}: {r['message']}"
+                            for r in results)
+        raise PreflightError(f"preflight 检查失败（abort），启动中止：\n{summary}")
+
+    # 原有 5 项检查
     for check in cfg.get("preflight") or []:
         name = check.get("name", "?")
         kind = check.get("check", "")

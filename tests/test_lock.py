@@ -84,6 +84,7 @@ def test_acquire_fields():
     ("completed", "已处理-成功"),
     ("failed", "已处理-失败"),
     ("manual_review", "已处理-需人工"),
+    ("pending", "未处理"),  # 新增：字段缺失回退场景
 ])
 def test_release_fields(state, value):
     assert lock.release_fields(state) == {"处理状态": value}
@@ -91,7 +92,7 @@ def test_release_fields(state, value):
 
 def test_release_fields_illegal_state():
     with pytest.raises(ValueError, match="释放目标状态非法"):
-        lock.release_fields("pending")
+        lock.release_fields("garbage")  # 改为非法 state
 
 
 def test_stale_filter_threshold():

@@ -184,6 +184,7 @@ class MiaodaBackend:
                 ["openclaw", "infer", "model", "run",
                  "--model", model,          # model 已是 "miaoda/glm-5.1" 完整格式
                  "--prompt", prompt,
+                 "--thinking", "medium",    # 对齐 MEMORY.md 2026-06-12 拍板（reasoning on）
                  "--json"],
                 capture_output=True,
                 text=True,

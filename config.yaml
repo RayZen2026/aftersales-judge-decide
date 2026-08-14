@@ -22,6 +22,9 @@
 #   source: U7XQbSEq6axXfJsj2QocRxlQnqb/tblEMESCIIr4pqz8 (升级售后商家审核任务表)
 #   筛选: storage 目标必填=true (2026-08-10 04:17)
 
+# ── 环境标识 ──
+environment: ${ENV}   # development | production | staging（从 .env 注入）
+
 task_table:
   app_token: ${BITABLE_APP_TOKEN_BUSINESS}
   table_id: tblEMESCIIr4pqz8
@@ -331,6 +334,7 @@ magic_numbers:
 
 llm:
   use_production_chain: false             # true=生产降级链(shared_chain)，false=开发单模型(dev)；部署时改true
+  timeout_seconds: 120                    # MiaodaBackend subprocess 超时（生产 30k prompt + Qwen3.7 慢响应兜底）
   shared_chain:
   - miaoda/glm-5.1
   - miaoda/qwen-3.7-plus
@@ -401,6 +405,7 @@ lock:
   - completed
   - failed
   - manual_review
+  - pending  # 字段缺失回退场景（main.py:421）
 preflight:
 - name: feishu_creds
   check: env_present

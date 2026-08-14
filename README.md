@@ -4,6 +4,13 @@
 
 ## 状态
 
+**Phase 5 基线版本 v0.7.0 + 部署就绪**（2026-08-13）
+
+- **v0.7.0 Prompt优化完成**：准确率 0% → 57.9%，30%锚定 90% → 58%，已达可接受水平
+- **部署P0 Bug已修复**：4个阻塞性Bug全部修复，开发环境完全可用，生产环境代码就绪
+- **LLM后端双栈支持**：开发环境用DashScope，生产环境用MiaodaBackend（openclaw subprocess）
+- **下一步**：Phase 6部署准备（cron配置、生产环境验证、观察期启动）
+
 **Phase 2 完成**（2026-08-12：6 核心模块 + 170 用例全绿，覆盖率 90-100%；下一步 Phase 3 主流程）
 
 - **Round 1 / Round 2 拍板**（2026-08-12 确认）：输出 schema 未定稿，Round 1 目标 = 探针**端到端跑通**（格式校验/一致性/latency）；准确率评估 + T1.7 1 vs 3 决策门推迟 Round 2（人工标注就绪后）。探针 LLM = DashScope `qwen-plus-latest` 单模型占位全链（本地无妙搭）。CSV 通道只覆盖任务表样本 + 人工标注表，维度数据走 lark-cli live JOIN。
@@ -46,6 +53,36 @@ SKILL 上线后**只暴露** `auto` / `manual` 2 个用户使用模式。`probe`
 
 样本量分层（确认拍板）：Phase 1.5-1.7 基础测试 5-10 样本 / Phase 3 回归 10-20 样本 / Phase 4.1 端到端 1→3→10→30 单。
 
+### LLM 后端选择（开发 vs 生产）
+
+**配置开关**（`config.yaml`）：
+```yaml
+llm:
+  use_production_chain: false  # false=开发环境，true=生产环境
+```
+
+**开发环境**（`use_production_chain: false`）：
+- **后端**：DashScopeBackend（OpenAI 兼容 SDK）
+- **模型**：qwen-plus-latest 单模型（config.yaml `llm.dev.model`）
+- **降级链**：无（开发调试用，快速失败）
+- **凭据**：env `DASHSCOPE_API_KEY`
+
+**生产环境**（`use_production_chain: true`）：
+- **后端**：MiaodaBackend（openclaw subprocess 调用）
+- **模型**：4+2 降级链（config.yaml `llm.shared_chain` + `llm.agent3_chain`）
+- **降级链**：glm-5.1 → qwen-3.7-plus → doubao-seed-2.0-pro → minimax-m3
+- **凭据**：openclaw 已配置（无需额外 env）
+- **要求**：openclaw 已安装且在 PATH
+
+**切换方式**：
+- 修改 `config.yaml` 中 `use_production_chain` 值
+- 开发环境：保持 `false`，使用 DashScope
+- 生产环境：改为 `true`，使用妙搭 4+2 降级链
+
+**部署就绪状态**（2026-08-13）：
+- ✅ **开发环境**：完全可用（DashScope + qwen-plus-latest）
+- ⚠️ **生产环境**：代码就绪，需要 openclaw 环境验证（4 模型降级链 + 超时/错误场景测试）
+
 ## store-tier-rules 依赖（开发/部署路径分离，⚠️ 部署时必改）
 
 门店分层 AST 求值 import `store-tier-rules` SKILL 的 `apply_tier`（CLAUDE.md 原则 2，不写自己的 `store_tier.py`）。**开发环境与部署环境路径不同**：
@@ -59,6 +96,78 @@ SKILL 上线后**只暴露** `auto` / `manual` 2 个用户使用模式。`probe`
 - 两边 SKILL 版本需**人工对齐**（当前开发拷贝 = v1.3.0），升级 store-tier-rules 后部署侧同步更新。
 - **只 import `apply_tier` 纯函数**，禁调其 `load_latest_rules`（走 lark-cli `--as user` + 沙箱 config，本地/生产 bot 通路不适用）；门店分层规则 JSON 由本项目 `data_loader.py` 自己拉取后作参数传入。
 - 分层失败降级：`store_tier=null` + `join_meta.tier_degrade_reason` 记录，不中断主流程（`probe.store_tier.degrade_on_failure`）。
+
+## 部署配置检查清单
+
+部署到生产环境（OpenClaw cron + 妙搭 innerapi）前，必须完成以下配置：
+
+### 1. 环境变量配置（.env）
+
+```bash
+# 复制模板
+cp .env.example .env
+
+# 编辑 .env，设置以下必填项：
+ENV=production                          # ⚠️ 必须设为 production
+FEISHU_APP_ID=cli_xxx                   # 飞书应用凭据
+FEISHU_APP_SECRET=xxx
+BITABLE_APP_TOKEN_BUSINESS=U7XQbSEq6axXfJsj2QocRxlQnqb  # 任务表
+BITABLE_APP_TOKEN_FIELDS=HGDzb2h7MaydFxsqlyAcCpALnB1    # 维度表
+BITABLE_APP_TOKEN_RULES=HGDzb2h7MaydFxsqlyAcCpALnB1     # 规则表
+```
+
+### 2. LLM 后端配置（config.yaml）
+
+```yaml
+# 编辑 config.yaml
+llm:
+  use_production_chain: true   # ⚠️ 必须改为 true（开发默认 false）
+  timeout_seconds: 120         # 妙搭 subprocess 超时（已配置）
+  shared_chain:                # 生产降级链（4 模型）
+  - miaoda/glm-5.1
+  - miaoda/qwen-3.7-plus
+  - miaoda/doubao-seed-2.0-pro
+  - miaoda/minimax-m3
+```
+
+### 3. store-tier-rules 依赖路径
+
+```bash
+# 设置环境变量指向 OpenClaw workspace 中的 store-tier-rules
+export STORE_TIER_RULES_DIR=/home/gem/workspace/agent/skills/store-tier-rules/scripts
+```
+
+### 4. Preflight 检查
+
+```bash
+# 运行启动前检查（6 项：环境一致性 + 5 项原有检查）
+python scripts/main.py preflight
+
+# 预期输出应包含：
+# ✅ 环境一致性检查通过（production + use_production_chain=true）
+# ✅ feishu_creds: env 变量存在 (3 项)
+# ✅ bitable_read: 任务表可达
+# ✅ llm_ping: 妙搭降级链可用
+# ✅ disk_min_mb: 磁盘空间充足
+# ✅ cron_registered: cron 配置正确
+```
+
+### 5. 部署后验证
+
+```bash
+# 手动触发一次 cron（不等待定时）
+python scripts/main.py auto --limit 1
+
+# 检查日志：
+# - 无 preflight 报错
+# - LLM 调用走 MiaodaBackend（非 DashScopeBackend）
+# - 任务表状态正常更新（未处理 → 处理中 → 已处理）
+```
+
+**⚠️ 常见错误**：
+- `ENV` 未设置或设为 `development` → preflight 报错"生产环境必须 use_production_chain=true"
+- `use_production_chain=false` 但 `ENV=production` → preflight 报错（环境不一致）
+- 缺少 `DASHSCOPE_API_KEY` 但 `use_production_chain=false` → DashScopeBackend 初始化失败
 
 ## Phase 1 Round 1 探针结果（2026-08-12）
 
@@ -105,6 +214,63 @@ SKILL 上线后**只暴露** `auto` / `manual` 2 个用户使用模式。`probe`
 **遗留风险（转 Phase 3 回归 + Phase 5 观察期）**：一致性 12.5% 仍超 5%；准确率未正式评估（GT 仅 4 单）；比例偏差；latency 贴近预算。
 
 ## Phase 5: 迭代记录（2026-08-13）
+
+### 部署检查与 P0 Bug 修复（2026-08-13）
+
+**部署检查发现**：部署后发现 4 个 P0 级 Bug，全部已修复（2 次 commit）
+
+#### Bug #1: release_lock("pending") 崩溃 ✅
+- **问题**：`lock.py:98` 只允许 3 个终态，字段缺失场景退回 pending 时崩溃
+- **修复**：`scripts/lock.py` 允许 "pending" 状态（Line 98）
+- **影响**：修复字段缺失场景崩溃，允许记录退回待处理状态
+
+#### Bug #2: agent_single.run 永远走 dev_chain ✅
+- **问题**：`agent_single.py:266` 硬编码 `dev_chain(cfg)`，生产环境无降级链
+- **修复**：
+  - `scripts/agent_single.py` (Line 262-268)：根据 `use_production_chain` 选择 chain
+  - `config.yaml` (Line 332)：新增 `llm.use_production_chain` 配置开关
+- **影响**：开发/生产环境可独立配置（单模型 vs 4+2 降级链）
+
+#### Bug #3: MiaodaBackend 是空桩 ✅
+- **问题**：`scripts/llm.py` 中 `MiaodaBackend` 只有 `raise NotImplementedError`，生产环境无法使用妙搭 LLM
+- **修复**：
+  - `scripts/llm.py` (Line 158-242)：完整实现 MiaodaBackend（80+ 行）
+    - 通过 `openclaw infer model run` subprocess 调用妙搭
+    - 解析 JSON 返回，处理 3 类错误（returncode/JSON decode/ok=false）
+    - 超时处理（TimeoutExpired）
+  - `scripts/main.py` (Line 273-287)：更新 `_make_backend` 支持后端选择
+- **影响**：生产环境可使用妙搭 4+2 降级链，代码就绪待 openclaw 环境验证
+
+#### Bug #4: Preflight 检查 env 但 config 用硬编码 ✅
+- **问题**：`config.yaml` 所有 `app_token` 硬编码，Preflight 检查的 `BITABLE_APP_TOKEN_*` 环境变量不被使用
+- **修复**：
+  - `config.yaml`：7 处 app_token 改为 `${BITABLE_APP_TOKEN_*}` 变量引用
+    - task_table.app_token: `${BITABLE_APP_TOKEN_BUSINESS}`
+    - dimensions 4 表：`${BITABLE_APP_TOKEN_FIELDS}`
+    - ast_rules 2 表：`${BITABLE_APP_TOKEN_RULES}`
+  - `.env.example`：更新 3 个 token 变量说明
+- **影响**：Preflight 检查与 config 配置口径一致，支持通过环境变量配置 token
+
+**文件变更统计**：
+```
+第一次 commit（Bug #1, #2, #4）:
+  .env.example            |  9 +++++++--
+  config.yaml             | 15 ++++++++-------
+  scripts/agent_single.py |  8 +++++++-
+  scripts/lock.py         |  4 ++--
+  4 files changed, 24 insertions(+), 12 deletions(-)
+
+第二次 commit（Bug #3）:
+  scripts/llm.py  | +83 -3  (实现 MiaodaBackend.call，80行新增)
+  scripts/main.py | +16 -7  (_make_backend 支持后端选择)
+  2 files changed, 92 insertions(+), 7 deletions(-)
+```
+
+**部署就绪状态**：
+- ✅ **开发环境**：完全可用（DashScope + qwen-plus-latest）
+- ⚠️ **生产环境**：代码就绪，需要 openclaw 环境验证（4 模型降级链 + 超时/错误场景测试）
+
+---
 
 ### v0.6.0 Prompt 优化（累加计算公式）
 - **目标**: 消除 v0.5.0 的 20:80 固定模式偏差
@@ -220,6 +386,8 @@ SKILL 上线后**只暴露** `auto` / `manual` 2 个用户使用模式。`probe`
 | **D-20260813-001** | 决策 | test_mode 功能实现：manual 命令支持 --test-mode 标志，写测试表（15 字段含 judgment_basis 8 维展开），跳过抢锁逻辑，可重复运行 | 确认 |
 | **D-20260813-002** | 决策 | Schema v4.0 完成：recommended_action 新增字段，action 枚举调整（赔付金额/退货/拒绝赔付/需人工），store_expected/store_expected_amount 透传输入，judgment_summary ≤40 字，reasoning ≤140 字，支持 4 方责任 | 确认 |
 | **D-20260813-003** | 决策 | 端到端流程验证通过（3/3 样本），主流程无卡点，可专注 LLM 优化；测试表 15 字段全部正确写入 | 确认 |
+| **D-20260813-004** | 决策 | **部署 P0 Bug 全部修复**（4 个）：#1 release_lock pending 崩溃 / #2 永远走 dev_chain / #3 MiaodaBackend 空桩 / #4 Preflight env 不一致；开发环境完全可用，生产环境代码就绪待 openclaw 验证 | 确认 |
+| **D-20260813-005** | 决策 | LLM 后端双栈支持：开发环境 DashScopeBackend（OpenAI SDK + qwen-plus-latest 单模型），生产环境 MiaodaBackend（openclaw subprocess + 4+2 降级链）；配置开关 `llm.use_production_chain`（false=开发，true=生产） | 确认 |
 
 ## 阻塞项（确认 review 时一次性提供）
 
