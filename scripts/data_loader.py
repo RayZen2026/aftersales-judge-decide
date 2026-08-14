@@ -84,7 +84,27 @@ def load_config(path: Optional[Path] = None) -> dict:
         cfg = yaml.safe_load(f)
     if "probe" not in cfg:
         raise KeyError("config.yaml 缺 probe 块（Phase 1 T1.4a 要求）")
+    # 递归替换 ${VAR} 环境变量引用
+    cfg = _substitute_env_vars(cfg)
     return cfg
+
+
+def _substitute_env_vars(obj: Any) -> Any:
+    """递归替换配置中的 ${VAR} 环境变量引用。"""
+    if isinstance(obj, dict):
+        return {k: _substitute_env_vars(v) for k, v in obj.items()}
+    elif isinstance(obj, list):
+        return [_substitute_env_vars(item) for item in obj]
+    elif isinstance(obj, str):
+        # 替换 ${VAR} 格式的环境变量
+        import re
+        pattern = re.compile(r'\$\{([^}]+)\}')
+        def replacer(match):
+            var_name = match.group(1)
+            return os.environ.get(var_name, match.group(0))  # 未找到则保持原样
+        return pattern.sub(replacer, obj)
+    else:
+        return obj
 
 
 def resolve_probe_output_dir(cfg: dict) -> Path:
@@ -283,6 +303,13 @@ def load_field_types(path: Optional[Path] = None) -> dict:
 def dump_field_types(cfg: dict, out_path: Optional[str] = None) -> Path:
     """live 拉 1 页生成 {表别名: {字段名: 类型}} 快照——CSV coerce 基线 + 字段漂移回归校验。"""
     ast_j = cfg["ast_rules"]["aftersales_judgment"]["fetch"]
+    # 默认视图 ID（2026-08-14 实查 lark-cli base +view-list）
+    default_views = {
+        "task_table": "vew2Z24Gfk",           # 表格（任务表默认视图，非过滤视图）
+        "product_dimension_table": "vewtGin7Xb",  # 表格
+        "store_table": "vewEOGawDa",          # 表格
+        "judgment_rules_table": "vew4rng89C", # Grid View
+    }
     tables = {
         "task_table": (cfg["task_table"]["app_token"], cfg["task_table"]["table_id"]),
         "product_dimension_table": (cfg["dimensions"]["product_dimension_table"]["app_token"],
@@ -293,7 +320,8 @@ def dump_field_types(cfg: dict, out_path: Optional[str] = None) -> Path:
     }
     snapshot: dict[str, dict] = {}
     for key, (app_token, table_id) in tables.items():
-        env = record_list(cfg, app_token=app_token, table_id=table_id, limit=1)
+        view_id = default_views.get(key)
+        env = record_list(cfg, app_token=app_token, table_id=table_id, view_id=view_id, limit=1)
         snapshot[key] = env.field_types
         logger.info("field_types[%s]: %d 字段", key, len(env.field_types))
     out = Path(out_path) if out_path else BASE_DIR / "assets" / "field_types.json"

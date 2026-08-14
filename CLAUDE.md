@@ -29,7 +29,12 @@
 
 **生产栈**：lark-cli + Python 3.9+ + 妙搭 innerapi（4+2 LLM 降级链）+ OpenClaw cron。
 
-**开发栈**（本地 CLI-only，不装 openclaw）：LLM 走 Qwen DashScope OpenAI 兼容端点（openai SDK，模型名一律 `qwen-plus-latest`，本账号无稳定版权限）；Python venv + nvm + npm 本地 lark-cli，全部 project-local、零全局污染。详见 `references/dev_env_setup.md`。
+**开发栈**（本地 CLI-only，不装 openclaw）：
+- **Python环境**：项目本地venv（`.venv/`），不使用系统Python；pip安装到本地venv
+- **Node环境**：项目本地node_modules（nvm管理版本），lark-cli本地安装
+- **LLM**：Qwen DashScope OpenAI兼容端点（openai SDK，模型名一律 `qwen-plus-latest`）
+- **原则**：全部 project-local、零全局污染（所有依赖装在项目目录内）
+- 详见 `references/dev_env_setup.md`。
 
 ---
 

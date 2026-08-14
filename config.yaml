@@ -102,6 +102,9 @@ task_table:
   - id: fld6rfaAgc
     name: 是否门店问题
     description: 售后问题是否和门店提交不规范相关 1 是 0 否
+  - id: fldwer43El
+    name: 是否商家承诺
+    description: 商家是否有口感承诺 1 是 0 否
   primary_key_name: 升级售后单号
   primary_key_id: fld5zIP7VN
 
@@ -219,8 +222,8 @@ dimensions:
       name: m13到m7下单天数
       description: 
     - id: fldCrF0buI
-      name: m13到m3升级售后天数
-      description: T-13至T-3的门店发生了升级售后的天数
+      name: m29到m3升级售后天数
+      description: T-29至T-3的门店发生了升级售后的天数
     - id: fldDCJK3Ej
       name: 近14日售后数量占比
       description: T-13至T0的门店售后商品件数占T-13至T0的门店到货商品件数比例
@@ -246,8 +249,8 @@ dimensions:
       name: 近7日升级售后自然日平台承担金额
       description: 
     - id: fldTJgS9hF
-      name: m13到m3升级售后且4日复购次数占比
-      description: T-13至T-3的门店发生了升级售后的日期在后T0到T+3共4天有复购行为的天数占T-13至T-3的门店发生了升级售后的
+      name: m29到m3升级售后且4日复购次数占比
+      description: T-29至T-3的门店发生了升级售后的日期在后T0到T+3共4天有复购行为的天数占T-29至T-3的门店发生了升级售后的
     - id: fldYdftqqN
       name: 近7天平台抽佣金额
       description: 近7天(T-6至T0)的门店在交易过程中平台根据商品抽佣率得到的归属于平台收入求和
@@ -257,6 +260,9 @@ dimensions:
     - id: fldbzvWI30
       name: 14日售后赔付率
       description: T-13至T0的门店售后赔付金额占T-13至T0的门店售后送达货值比例
+    - id: fldDXuLQh3
+      name: 14日平均售后赔付率
+      description: 14天售后赔付率>0的门店计算14日售后赔付率的平均值（用于识别恶意售后）
     - id: flddnKx1AO
       name: 店铺id
       description: 门店/店铺的唯一标识id
