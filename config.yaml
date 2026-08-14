@@ -460,7 +460,7 @@ probe:
       backoff_seconds: [0.5, 1, 2]
   task_fetch:
     limit_default: 5
-    limit_max: 30
+    limit_max: 200                          # 临时提升：用于GT测试覆盖全部样本（168条任务表数据）
     status_in:                             # 客户端过滤（视图拉取后）；filter-json 会覆盖视图过滤（2026-08-12 实测），不能与 view 同传
     - 未处理                                # 表中现行值（= 拍板 5 状态的"待处理"，阻塞项 #7 待统一）
     - 已处理-失败                            # cron 兜底重试（architecture.md §2 拉取矩阵：拉取 = 待处理 + 失败）
