@@ -113,8 +113,8 @@ task_table:
 dimensions:
   result_table:
     app_token: ${BITABLE_APP_TOKEN_FIELDS}
-    table_id: tblQFKdViDyghC65
-    source_url: https://bggc.feishu.cn/wiki/QtV8wiiSuikve7kOzaKcS4tEnXb?table=tblQFKdViDyghC65&view=vewWdG3ptr
+    table_id: tblQ1btbmJsBESGd                        # 升级售后结果表（生产）
+    source_url: https://bggc.feishu.cn/wiki/QtV8wiiSuikve7kOzaKcS4tEnXb?table=tblQ1btbmJsBESGd&view=vewWdG3ptr
     primary_key_name: 升级售后单号
     primary_key_id: fld2kYC6CJ
     select_fields:
@@ -247,7 +247,10 @@ dimensions:
       description: T-13至T0的门店下单水果的四级类目数量的中位数
     - id: fldNNJjVCT
       name: 近7天下单天数
-      description: 
+      description:
+    - id: fldo8Nn2PB
+      name: 近7天下单金额
+      description: 近7天(T-6至T0)的门店交易下单时产生商品交易金额求和 
     - id: fldNbOW4zj
       name: 近7日升级售后自然日平台承担金额
       description: 

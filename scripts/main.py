@@ -533,9 +533,11 @@ def _write_result(cfg: dict, fb, item_id: str, output: dict, test_mode: bool = F
     """写判责结果表（生产表或测试表）。
 
     test_mode=True: 写测试表（15字段，含judgment_basis 8维展开）
-    test_mode=False: 写生产表（5字段）
+    test_mode=False: 写生产表（5字段），但如果result_table指向测试表则写15字段
     """
-    fields = fb.build_result_fields(item_id, output, test_mode=test_mode)
+    # 获取目标表ID，判断是否为测试表
+    result_table_id = cfg['dimensions']['result_table']['table_id']
+    fields = fb.build_result_fields(item_id, output, test_mode=test_mode, table_id=result_table_id)
     try:
         fb.upsert_result_record(cfg, fields, test_mode=test_mode)
     except Exception as e:  # noqa: BLE001
@@ -546,44 +548,62 @@ def _write_result(cfg: dict, fb, item_id: str, output: dict, test_mode: bool = F
 # cmd_auto / cmd_manual / cmd_probe / cmd_test
 # ============================================================
 
-def _run_workflow(cfg: dict) -> dict:
-    """auto/manual 共用的完整 Workflow。"""
+def _run_workflow(cfg: dict, limit: int = None, test_mode: bool = False) -> dict:
+    """auto/manual 共用的完整 Workflow。
+
+    Args:
+        cfg: 配置字典
+        limit: 最多处理多少条记录（None=使用配置中的batch_size）
+        test_mode: True=写入测试表，False=写入生产表
+    """
     import feishu_bitable as fb                    # noqa: PLC0415
     from feishu_notify import NotifyDedup          # noqa: PLC0415
 
     notify_dedup = NotifyDedup(window_hours=cfg["notify"]["dedup"]["window_hours"])
     backend = _make_backend(cfg)
 
-    # Stage 1
-    tasks, record_ids = stage1_fetch(cfg)
-    if not tasks:
-        logger.info("无待处理任务, 本次 cron 空跑 (原则 10 不通知)")
-        return {"processed": 0, "skipped": 0, "results": {}}
+    # 如果指定了limit，临时覆盖batch_size
+    original_batch_size = cfg["magic_numbers"]["batch_size"]
+    if limit and limit > 0:
+        cfg["magic_numbers"]["batch_size"] = limit
+        logger.info(f"临时设置 batch_size={limit}")
 
-    # stale 兜底（在 Stage1 拉出列表后，Stage3 遍历前）
-    check_stale_and_reclaim(cfg, fb)
+    try:
+        # Stage 1
+        tasks, record_ids = stage1_fetch(cfg)
+        if not tasks:
+            logger.info("无待处理任务, 本次 cron 空跑 (原则 10 不通知)")
+            return {"processed": 0, "skipped": 0, "results": {}}
 
-    # Stage 2
-    samples, judgment_rules = stage2_prepare(cfg, tasks)
+        # stale 兜底（在 Stage1 拉出列表后，Stage3 遍历前）
+        check_stale_and_reclaim(cfg, fb)
 
-    # Stage 3
-    results: dict[str, str] = {}
-    for sample, rid in zip(samples, record_ids):
-        if not rid:
-            logger.warning("record_id 缺失, 跳过 %s", sample.get("item_id"))
-            continue
-        final_state = process_item(cfg, sample, rid, judgment_rules, backend, fb, notify_dedup)
-        results[sample["item_id"]] = final_state
+        # Stage 2
+        samples, judgment_rules = stage2_prepare(cfg, tasks)
 
-    stats = {s: sum(1 for v in results.values() if v == s)
-             for s in ("completed", "failed", "manual_review", "pending", "processing")}
-    return {"processed": len(results), "results": results, "stats": stats}
+        # Stage 3
+        results: dict[str, str] = {}
+        for sample, rid in zip(samples, record_ids):
+            if not rid:
+                logger.warning("record_id 缺失, 跳过 %s", sample.get("item_id"))
+                continue
+            final_state = process_item(cfg, sample, rid, judgment_rules, backend, fb, notify_dedup, test_mode=test_mode)
+            results[sample["item_id"]] = final_state
+
+        stats = {s: sum(1 for v in results.values() if v == s)
+                 for s in ("completed", "failed", "manual_review", "pending", "processing")}
+        return {"processed": len(results), "results": results, "stats": stats, "test_mode": test_mode}
+    finally:
+        # 恢复原始batch_size
+        cfg["magic_numbers"]["batch_size"] = original_batch_size
 
 
 def cmd_auto(args, logger_) -> dict:
     cfg = load_config()
     run_preflight(cfg)
-    result = _run_workflow(cfg)
+    limit = getattr(args, 'limit', None)
+    test_mode = getattr(args, 'test_mode', False)
+    result = _run_workflow(cfg, limit=limit, test_mode=test_mode)
     logger_.info("auto 完成: %s", result["stats"])
     return {"mode": "auto", **result}
 
@@ -639,7 +659,10 @@ def main():
     subparsers = parser.add_subparsers(dest="mode", required=True)
 
     # 对外暴露（SKILL.md body 只写这两个）
-    subparsers.add_parser("auto", help="cron 自动模式")
+    p_auto = subparsers.add_parser("auto", help="cron 自动模式")
+    p_auto.add_argument("--limit", type=int, default=None, help="限制处理条数（测试用）")
+    p_auto.add_argument("--test-mode", action="store_true", help="写测试表而非生产表")
+
     p_manual = subparsers.add_parser("manual", help="手动处理单条")
     p_manual.add_argument("--item-id", required=True)
     p_manual.add_argument("--test-mode", action="store_true", help="写测试表（15字段）而非生产表（5字段）")

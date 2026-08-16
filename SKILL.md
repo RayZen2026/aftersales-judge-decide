@@ -164,6 +164,8 @@ FEISHU_NOTIFY_ENABLED=1      # 开启飞书私聊通知（开发期不设则只�
 **用途**: 开发/测试期查看 LLM 推理过程，便于 prompt 优化和质量分析  
 **测试表 URL**: https://bggc.feishu.cn/wiki/QtV8wiiSuikve7kOzaKcS4tEnXb?table=tblQ1btbmJsBESGd&view=vewWdG3ptr
 
+**注**: 当前生产表即为此15字段表（tblQ1btbmJsBESGd），代码根据table_id自动判断字段集。
+
 任务表同步更新处理状态：
 
 | 终态 | 含义 | 结果表写入 |

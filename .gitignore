@@ -45,3 +45,13 @@ state/
 # 本地临时文件
 trash/
 submodules/
+scripts/probe_gt_samples_simple.py
+scripts/probe_gt_samples.py
+run_probe_gt_optimized.sh
+references/csv_data_integration_spec.md
+E2E_TEST_GUIDE.md
+run_e2e_test.sh
+run_production_validation.sh
+v0.14.3_test_issue_diagnosis.md
+assets/agent_single_prompt_template.j2
+DEPLOYMENT_CHECKLIST.md

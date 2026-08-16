@@ -206,14 +206,13 @@ def _derive_submission_result(action: str) -> str:
     return "需人工"
 
 
-def build_result_fields(order_id: str, output: dict, test_mode: bool = False) -> dict:
+def build_result_fields(order_id: str, output: dict, test_mode: bool = False, table_id: str = None) -> dict:
     """1-AGENT 输出 schema v4 → 判责结果表写入字段。
 
-    生产表（5字段，test_mode=False）：
-      升级售后单号、判责结果、提交结果类型、满足期望类型、判责报告
-
-    测试表（15字段，test_mode=True，2026-08-13扩展）：
-      生产表5字段 + 建议动作 + judgment_basis 8维 + 关键因素
+    字段集判断逻辑（2026-08-16修订）：
+    1. test_mode=True → 15字段（测试表）
+    2. table_id=tblQ1btbmJsBESGd → 15字段（升级售后结果表-测试使用）
+    3. 其他 → 5字段（生产表 tblQFKdViDyghC65）
     """
     action = output.get("action") or "需人工"
     basis = output.get("judgment_basis") or {}
@@ -227,8 +226,8 @@ def build_result_fields(order_id: str, output: dict, test_mode: bool = False) ->
         "判责报告": _format_judgment_report(output),
     }
 
-    # 测试表扩展字段（10个）
-    if test_mode:
+    # 测试表扩展字段（10个）：test_mode=True 或 指向测试表
+    if test_mode or table_id == "tblQ1btbmJsBESGd":
         # 建议动作：映射LLM输出到飞书select选项名称
         recommended = output.get("recommended_action") or "赔付金额"
         # LLM输出格式: "倾向于X" → 飞书选项: "X"

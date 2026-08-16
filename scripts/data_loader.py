@@ -177,7 +177,10 @@ def record_list(cfg: dict, *, app_token: str, table_id: str,
                 sort_json: Optional[str] = None,
                 limit: Optional[int] = None,
                 page_size: int = 200, max_pages: int = 20) -> Envelope:
-    """base +record-list 分页拉取。field_names 必须显式投影（不投影返回列数不可控）。
+    """base +record-list 分页拉取。
+
+    v0.14.0优化：不再通过--field-id逐个指定字段（避免URL过长超时），
+    改为拉取所有字段后客户端过滤。field_names=None时返回所有字段。
 
     ⚠️ view_id 与 filter_json 互斥使用：实测 --filter-json 会**完全覆盖**视图过滤
     （视图时间窗丢失）。按视图拉时额外条件走客户端过滤。
@@ -193,8 +196,7 @@ def record_list(cfg: dict, *, app_token: str, table_id: str,
                 "--base-token", app_token, "--table-id", table_id]
         if view_id:
             args += ["--view-id", view_id]
-        for name in field_names or []:
-            args += ["--field-id", name]
+        # v0.14.0: 不指定--field-id，获取所有字段（避免URL过长）
         if filter_json:
             args += ["--filter-json", filter_json]
         if sort_json:
@@ -208,7 +210,13 @@ def record_list(cfg: dict, *, app_token: str, table_id: str,
         if names and types:
             env.field_types = dict(zip(names, types))
         for i, row in enumerate(rows):
-            env.records.append(dict(zip(names, row)))
+            full_row = dict(zip(names, row))
+            # v0.14.0: 客户端过滤字段（如果field_names指定）
+            if field_names:
+                filtered_row = {k: v for k, v in full_row.items() if k in field_names}
+                env.records.append(filtered_row)
+            else:
+                env.records.append(full_row)
             env.record_ids.append(rids[i] if i < len(rids) else None)
         last_has_more = bool(data.get("has_more"))
         if not last_has_more or not rows:
