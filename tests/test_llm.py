@@ -236,3 +236,34 @@ def test_miaoda_backend_init():
     backend = llm.MiaodaBackend(CFG)
     assert backend.timeout == 120  # 从 CFG["llm"]["timeout_seconds"] 读取（默认120，Issue #22修复）
     assert backend.max_tokens_cap == 30000  # 从 CFG["llm"]["params"]["max_tokens"] 读取
+
+
+# ── MiaodaBackend --thinking 兼容性（P0-4 修复）──
+
+def test_miaoda_thinking_capable_models():
+    """验证 THINKING_CAPABLE 集合包含 reasoning=true 的 3 个模型，不含 minimax-m3"""
+    tc = llm.MiaodaBackend.THINKING_CAPABLE
+    assert "miaoda/glm-5.1" in tc
+    assert "miaoda/qwen-3.7-plus" in tc
+    assert "miaoda/doubao-seed-2.0-pro" in tc
+    assert "miaoda/minimax-m3" not in tc  # reasoning=false，不能加 --thinking
+
+
+def test_miaoda_backend_build_args_with_thinking():
+    """reasoning=true 模型应注入 --thinking medium"""
+    backend = llm.MiaodaBackend(CFG)
+    args = backend._build_args("miaoda/glm-5.1", "test prompt")
+    assert "--thinking" in args
+    idx = args.index("--thinking")
+    assert args[idx + 1] == "medium"
+    assert "--model" in args and "miaoda/glm-5.1" in args
+    assert "--json" in args
+
+
+def test_miaoda_backend_build_args_without_thinking():
+    """minimax-m3 (reasoning=false) 不应注入 --thinking"""
+    backend = llm.MiaodaBackend(CFG)
+    args = backend._build_args("miaoda/minimax-m3", "test prompt")
+    assert "--thinking" not in args
+    assert "--model" in args and "miaoda/minimax-m3" in args
+    assert "--json" in args

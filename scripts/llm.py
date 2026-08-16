@@ -160,12 +160,36 @@ class MiaodaBackend:
 
     model 入参格式：miaoda/glm-5.1（chain 已带前缀，直接传给 openclaw）。
     调用方式：openclaw infer model run --model <model> --prompt <prompt> --json
+
+    --thinking 兼容性（P0-4 修复，2026-08-16）：
+      minimax-m3 reasoning=false，不支持 --thinking 参数；
+      其余 3 模型 reasoning=true，使用 --thinking medium。
+      通过 THINKING_CAPABLE 类属性按模型 capability 决定是否注入。
     """
+
+    # 支持 --thinking 的模型集合（reasoning=true）；不在集合中的模型不注入该参数
+    THINKING_CAPABLE: dict[str, str] = {
+        "miaoda/glm-5.1": "medium",
+        "miaoda/qwen-3.7-plus": "medium",
+        "miaoda/doubao-seed-2.0-pro": "medium",
+        # miaoda/minimax-m3 reasoning=false，不加 --thinking
+    }
 
     def __init__(self, cfg: dict):
         llm_cfg = cfg.get("llm", {})
         self.timeout = llm_cfg.get("timeout_seconds", 120)
         self.max_tokens_cap = llm_cfg.get("params", {}).get("max_tokens", 30000)
+
+    def _build_args(self, model: str, prompt: str) -> list[str]:
+        """构建 openclaw subprocess 参数（按模型 capability 决定是否注入 --thinking）。"""
+        args = ["openclaw", "infer", "model", "run",
+                "--model", model,
+                "--prompt", prompt]
+        thinking_level = self.THINKING_CAPABLE.get(model)
+        if thinking_level:
+            args += ["--thinking", thinking_level]
+        args.append("--json")
+        return args
 
     def call(self, model: str, prompt: str, params: dict) -> LLMResponse:
         """通过 openclaw subprocess 调用妙搭 LLM。
@@ -180,12 +204,9 @@ class MiaodaBackend:
         max_tokens = min(max_tokens, self.max_tokens_cap) if max_tokens else self.max_tokens_cap
 
         try:
+            args = self._build_args(model, prompt)
             result = subprocess.run(
-                ["openclaw", "infer", "model", "run",
-                 "--model", model,          # model 已是 "miaoda/glm-5.1" 完整格式
-                 "--prompt", prompt,
-                 "--thinking", "medium",    # 对齐 MEMORY.md 2026-06-12 拍板（reasoning on）
-                 "--json"],
+                args,
                 capture_output=True,
                 text=True,
                 timeout=self.timeout,

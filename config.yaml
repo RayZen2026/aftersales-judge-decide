@@ -345,7 +345,7 @@ magic_numbers:
   manual_review_threshold: null
 
 llm:
-  use_production_chain: false             # true=生产降级链(shared_chain)，false=开发单模型(dev)；部署时改true
+  use_production_chain: true              # true=生产降级链(shared_chain)，false=开发单模型(dev)；2026-08-16 部署切换
   timeout_seconds: 120                    # MiaodaBackend subprocess 超时（生产 30k prompt + Qwen3.7 慢响应兜底）
   shared_chain:
   - miaoda/glm-5.1
