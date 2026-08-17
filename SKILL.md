@@ -118,10 +118,17 @@ abort 失败时输出具体失败项，检查 env 或 lark-cli 授权后重跑�
 BITABLE_APP_TOKEN_BUSINESS   # 升级售后商家审核任务表所在 base
 BITABLE_APP_TOKEN_FIELDS     # 字段说明 base（维度表）
 BITABLE_APP_TOKEN_RULES      # 判责规则 base
-DASHSCOPE_API_KEY            # 开发期 Qwen DashScope（生产用妙搭 innerapi）
+LLM_PROVIDER                 # LLM后端选择：dashscope（开发/测试）或 miaoda（生产）
+DASHSCOPE_API_KEY            # DashScope API密钥（LLM_PROVIDER=dashscope时必需）
 BITABLE_WRITE_ENABLED=1      # 开启真实飞书写入（开发期不设则只读）
 FEISHU_NOTIFY_ENABLED=1      # 开启飞书私聊通知（开发期不设则只记 memory）
 ```
+
+**LLM后端切换**（2026-08-17新增）：
+- 通过 `LLM_PROVIDER` 环境变量控制
+- `dashscope`: 开发/测试，qwen-plus-latest单模型（需DASHSCOPE_API_KEY）
+- `miaoda`: 生产，4模型降级链（需OpenClaw环境）
+- 未设置时降级到 `config.yaml` 中的 `use_production_chain` 配置
 
 ## Formatter
 

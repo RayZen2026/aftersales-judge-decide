@@ -29,12 +29,19 @@
 | 变量 | 用途 | 生产要求 | 状态 |
 |------|------|----------|------|
 | `ENV` | 环境标识 | `production` | ⚠️ 待修改 |
+| `LLM_PROVIDER` | LLM后端选择 | `miaoda`（生产）或 `dashscope`（测试） | ⚠️ 待设置 |
 | `BITABLE_APP_TOKEN_BUSINESS` | 任务表 base | 已配置 | ✅ |
 | `BITABLE_APP_TOKEN_FIELDS` | 维度表 base | 已配置 | ✅ |
 | `BITABLE_APP_TOKEN_RULES` | 规则表 base | 已配置 | ✅ |
-| `DASHSCOPE_API_KEY` | LLM API（开发期） | 生产期用妙搭 | ⚠️ 待确认 |
+| `DASHSCOPE_API_KEY` | LLM API（开发/测试） | 保留（测试用） | ✅ |
 | `BITABLE_WRITE_ENABLED` | 写保护开关 | **不写入**.env | ✅ 正确 |
 | `FEISHU_NOTIFY_ENABLED` | 通知开关 | 生产环境设为1 | ⚠️ 待确认 |
+
+**LLM后端配置说明**（2026-08-17新增）：
+- 通过环境变量 `LLM_PROVIDER` 控制后端选择
+- `LLM_PROVIDER=dashscope`: 使用DashScope（开发/测试，单模型qwen-plus-latest）
+- `LLM_PROVIDER=miaoda`: 使用妙搭innerapi（生产，4模型降级链）
+- 未设置时：降级到 `config.yaml` 中的 `use_production_chain` 配置（向后兼容）
 
 ---
 
@@ -262,23 +269,39 @@ openclaw skill disable aftersales-judge-decide
 
 旧5字段表（tblQFKdViDyghC65）已废弃，历史数据保留但不再写入。
 
-### 8.2 LLM 链配置 ⚠️
+### 8.2 LLM 后端配置（2026-08-17优化）⚙️
 
-当前使用 DashScope（开发期），生产环境建议：
-- 方案A: 继续用 DashScope（需确认配额）
-- 方案B: 切换到妙搭 innerapi（4+2降级链）
+**配置方式**（灵活切换）：
+```bash
+# 方式1: 环境变量控制（推荐，灵活）
+export LLM_PROVIDER=dashscope  # 开发/测试
+export LLM_PROVIDER=miaoda     # 生产
 
-**切换步骤**（如选方案B）：
-```yaml
-# config.yaml
-llm:
-  provider: miaoda_innerapi
-  shared_chain:
-    - model: qwen-max
-      fallback: qwen-plus
-    - model: gpt-4
-      fallback: gpt-3.5-turbo
+# 方式2: config.yaml控制（向后兼容）
+# 修改 llm.provider: ${LLM_PROVIDER:dashscope}
+# 或使用 use_production_chain: true/false
 ```
+
+**后端对比**：
+
+| 后端 | 使用场景 | 模型 | 配置要求 |
+|------|----------|------|----------|
+| `dashscope` | 开发/测试 | qwen-plus-latest（单模型） | `DASHSCOPE_API_KEY` |
+| `miaoda` | 生产 | 4模型降级链（glm-5.1等） | OpenClaw环境 |
+
+**切换示例**：
+```bash
+# 开发环境测试
+LLM_PROVIDER=dashscope python scripts/main.py auto --limit 5
+
+# 生产环境验证（需OpenClaw）
+LLM_PROVIDER=miaoda python scripts/main.py auto --limit 1
+```
+
+**部署建议**：
+- 开发/测试期：`LLM_PROVIDER=dashscope`（成本低，响应快）
+- 生产环境：`LLM_PROVIDER=miaoda`（高可用，降级链）
+- 混合部署：白天用miaoda（降级链），夜间用dashscope（节省成本）
 
 ### 8.3 Prompt 版本追踪
 
@@ -307,9 +330,9 @@ llm:
 
 ### 必做项（P0）
 
-- [ ] **LLM配置确认**: DashScope 或妙搭 innerapi
+- [ ] **LLM后端配置**: 设置 `LLM_PROVIDER=miaoda`（生产）或 `dashscope`（测试）
 - [ ] **环境变量设置**: `ENV=production`, `BITABLE_WRITE_ENABLED=1`
-- [ ] **单条测试**: `auto --limit 1` 验证通过
+- [ ] **单条测试**: `LLM_PROVIDER=dashscope python scripts/main.py auto --limit 1` 验证通过
 - [ ] **飞书表权限验证**: 确认生产表（tblQ1btbmJsBESGd）写入权限
 
 ### 建议项（P1）

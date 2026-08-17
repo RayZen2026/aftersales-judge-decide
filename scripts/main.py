@@ -338,13 +338,29 @@ def allocate_correction(responsibility: dict) -> dict:
 
 
 def _make_backend(cfg: dict):
-    """根据配置选择 LLM 后端：开发用 DashScopeBackend，生产用 MiaodaBackend。
+    """根据配置选择 LLM 后端。
 
-    判断依据：cfg.llm.use_production_chain
-    - false（默认）: DashScopeBackend（开发环境，Qwen DashScope）
-    - true: MiaodaBackend（生产环境，openclaw subprocess）
+    选择逻辑（2026-08-17优化）：
+    1. 优先使用 cfg.llm.provider（从env LLM_PROVIDER注入）
+       - "dashscope": DashScopeBackend（开发/测试，Qwen DashScope）
+       - "miaoda": MiaodaBackend（生产，openclaw subprocess）
+    2. 降级到 cfg.llm.use_production_chain（向后兼容）
+       - false: DashScopeBackend
+       - true: MiaodaBackend
     """
-    use_prod = cfg.get("llm", {}).get("use_production_chain", False)
+    llm_cfg = cfg.get("llm", {})
+    provider = llm_cfg.get("provider", "").lower()
+
+    # 优先使用provider配置
+    if provider == "miaoda":
+        from llm import MiaodaBackend  # noqa: PLC0415
+        return MiaodaBackend(cfg)
+    elif provider == "dashscope":
+        from llm import DashScopeBackend  # noqa: PLC0415
+        return DashScopeBackend(cfg)
+
+    # 降级到use_production_chain（向后兼容）
+    use_prod = llm_cfg.get("use_production_chain", False)
     if use_prod:
         from llm import MiaodaBackend  # noqa: PLC0415
         return MiaodaBackend(cfg)

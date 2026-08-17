@@ -90,18 +90,30 @@ def load_config(path: Optional[Path] = None) -> dict:
 
 
 def _substitute_env_vars(obj: Any) -> Any:
-    """递归替换配置中的 ${VAR} 环境变量引用。"""
+    """递归替换配置中的 ${VAR} 或 ${VAR:default} 环境变量引用。
+
+    支持格式：
+    - ${VAR}: 环境变量，未设置则保持原样
+    - ${VAR:default}: 环境变量，未设置则使用default值
+    """
     if isinstance(obj, dict):
         return {k: _substitute_env_vars(v) for k, v in obj.items()}
     elif isinstance(obj, list):
         return [_substitute_env_vars(item) for item in obj]
     elif isinstance(obj, str):
-        # 替换 ${VAR} 格式的环境变量
+        # 替换 ${VAR} 或 ${VAR:default} 格式的环境变量
         import re
-        pattern = re.compile(r'\$\{([^}]+)\}')
+        pattern = re.compile(r'\$\{([^:}]+)(?::([^}]*))?\}')
         def replacer(match):
             var_name = match.group(1)
-            return os.environ.get(var_name, match.group(0))  # 未找到则保持原样
+            default_value = match.group(2)  # 可能为None
+            env_value = os.environ.get(var_name)
+            if env_value is not None:
+                return env_value
+            elif default_value is not None:
+                return default_value
+            else:
+                return match.group(0)  # 未找到且无默认值，保持原样
         return pattern.sub(replacer, obj)
     else:
         return obj
