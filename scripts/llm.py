@@ -34,6 +34,30 @@ ERR_UNKNOWN = "llm_unknown"      # 非 retryable（4xx 非 429 / 其他异常）
 RETRYABLE_KINDS = frozenset({ERR_RATE_LIMIT, ERR_5XX, ERR_TIMEOUT})
 
 
+def _build_safe_http_client(timeout: float) -> Any:
+    """构造 httpx.Client，绕过沙箱 SSL_CERT_FILE 限制（沙箱指向 lark-enterprise 自签 CA，
+    验 dashscope 真实证书失败 → APIConnectionError）。
+
+    修法（LRN-20260817-001）：
+      - verify=ssl.create_default_context(cafile=certifi.where()) 显式指定
+        → 覆盖 httpx 默认读 SSL_CERT_FILE（httpx 0.28+ 推荐 SSLContext 形式，
+        字符串路径仍可用但 deprecation warning）
+      - proxy=os.environ.get('HTTPS_PROXY') 显式指定 → 保持走沙箱代理
+        （沙箱代理已验证可路由到 dashscope 真实端点，401 是 key 问题不是代理问题）
+    """
+    import ssl  # noqa: PLC0415
+    import certifi  # noqa: PLC0415 — 延迟 import（certifi 是 openai 隐式依赖但需显式装）
+    import httpx  # noqa: PLC0415
+
+    proxy = os.environ.get("HTTPS_PROXY") or os.environ.get("https_proxy")
+    ssl_ctx = ssl.create_default_context(cafile=certifi.where())
+    return httpx.Client(
+        verify=ssl_ctx,
+        proxy=proxy,
+        timeout=timeout,
+    )
+
+
 @dataclass
 class LLMResponse:
     content: str
@@ -124,8 +148,13 @@ class DashScopeBackend:
         api_key = os.environ.get(p["api_key_env"])
         if not api_key:
             raise RuntimeError(f"env {p['api_key_env']} 缺失 — 先 source .env")
-        self.client = OpenAI(api_key=api_key, base_url=p["base_url"])
         self.timeout = p.get("timeout_seconds", 60)
+        # 显式传 http_client 绕过沙箱 SSL_CERT_FILE 限制（见 _build_safe_http_client）
+        self.client = OpenAI(
+            api_key=api_key,
+            base_url=p["base_url"],
+            http_client=_build_safe_http_client(self.timeout),
+        )
         self.max_tokens_cap = p.get("max_tokens", 8192)
         self.temperature_default = p.get("temperature", 0.1)
 

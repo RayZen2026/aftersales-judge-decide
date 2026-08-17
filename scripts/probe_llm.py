@@ -79,12 +79,21 @@ class LLMResult:
 
 def make_client(cfg: dict):
     from openai import OpenAI  # 延迟 import：无 key 时也允许跑 --help
+    import ssl  # noqa: PLC0415
+    import httpx  # noqa: PLC0415
+    import certifi  # noqa: PLC0415
     llm = cfg["probe"]["llm"]
     api_key = os.environ.get(llm["api_key_env"])
     if not api_key:
         raise RuntimeError(
             f"env {llm['api_key_env']} 缺失 — 先 `set -a && source .env && set +a`")
-    return OpenAI(api_key=api_key, base_url=llm["base_url"])
+    timeout = llm.get("timeout_seconds", 30)
+    # 显式 http_client 绕过沙箱 SSL_CERT_FILE 限制（见 llm._build_safe_http_client）
+    # verify 用 SSLContext 而非字符串路径：httpx 0.28+ 推荐，避免 deprecation warning
+    proxy = os.environ.get("HTTPS_PROXY") or os.environ.get("https_proxy")
+    ssl_ctx = ssl.create_default_context(cafile=certifi.where())
+    http_client = httpx.Client(verify=ssl_ctx, proxy=proxy, timeout=timeout)
+    return OpenAI(api_key=api_key, base_url=llm["base_url"], http_client=http_client)
 
 
 def _is_retryable(e: Exception) -> bool:
