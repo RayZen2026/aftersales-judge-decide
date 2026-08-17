@@ -507,7 +507,7 @@ probe:
     aftersales_type: 升级售后类型
     aftersales_interval: 升级售后提交间隔天数
   store_tier:
-    scripts_dir_default: submodules/store-tier-rules/scripts   # env STORE_TIER_RULES_DIR 覆盖（部署路径不同，见 README）
+    scripts_dir_default: /home/gem/workspace/agent/skills/store-tier-rules/scripts   # 实际路径（独立 skill，不在 submodules/）— env STORE_TIER_RULES_DIR 覆盖
     degrade_on_failure: true                # 分层失败 → store_tier=null + join_meta 记 reason，不中断探针
   consistency_runs: 3
   csv_header_aliases: {}                    # CSV 表头名别名（飞书导出表头漂移时补）

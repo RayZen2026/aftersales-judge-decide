@@ -2,7 +2,8 @@
 import data_loader as dl
 
 
-CFG = {"probe": {"store_tier": {"scripts_dir_default": "submodules/store-tier-rules/scripts"}}}
+# LRN-20260817-004 修法后：scripts_dir_default 指向独立 skill 路径，不依赖 submodules/
+CFG = {"probe": {"store_tier": {"scripts_dir_default": "/home/gem/workspace/agent/skills/store-tier-rules/scripts"}}}
 
 
 def test_store_row_none_degrades():
@@ -30,5 +31,6 @@ def test_resolve_scripts_dir_env_override(monkeypatch):
 
 
 def test_resolve_scripts_dir_default():
+    # LRN-20260817-004: 默认值已修为独立 skill 真实路径（不再依赖 submodules/）
     monkeypatch_none = dl.resolve_store_tier_scripts_dir(CFG)
-    assert str(monkeypatch_none).endswith("submodules/store-tier-rules/scripts")
+    assert str(monkeypatch_none).endswith("/home/gem/workspace/agent/skills/store-tier-rules/scripts")
