@@ -346,7 +346,7 @@ magic_numbers:
 
 llm:
   provider: ${LLM_PROVIDER:dashscope}     # dashscope=开发/测试，miaoda=生产；从env注入，默认dashscope
-  use_production_chain: true              # true=生产降级链(shared_chain)，false=开发单模型(dev)；仅provider=miaoda时生效
+  use_production_chain: false             # false=开发单模型(qwen-plus-latest DashScope)；方案 B 路径
   timeout_seconds: 120                    # MiaodaBackend subprocess 超时（生产 30k prompt + Qwen3.7 慢响应兜底）
   shared_chain:
   - miaoda/glm-5.1

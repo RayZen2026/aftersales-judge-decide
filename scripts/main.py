@@ -51,6 +51,8 @@ logger = logging.getLogger("aftersales-judge-decide")
 def load_config(path: Optional[Path] = None) -> dict:
     """YAML 加载 + L4 严格替换（${VAR} 引用 env，缺失即 abort）。
 
+    支持 ${VAR:default} 默认值语法（v0.0 2026-08-17）：VAR 缺失时用 default，
+    缺省仍按 L4 严格模式 abort。
     只替换 YAML 值部分的 ${VAR}；注释行（# 开头）不处理，
     防止注释中的示例文字被误匹配（如 config 头部说明注释）。
     """
@@ -68,12 +70,15 @@ def load_config(path: Optional[Path] = None) -> dict:
             continue
         def _replace(m, _errors=errors):
             var = m.group(1)
+            default = m.group(2)
             val = os.environ.get(var)
             if val is None:
+                if default is not None:
+                    return default
                 _errors.append(var)
                 return m.group(0)
             return val
-        processed.append(_re.sub(r"\$\{([A-Z][A-Z0-9_]*)\}", _replace, line))
+        processed.append(_re.sub(r"\$\{([A-Z][A-Z0-9_]*)(?::([^}]*))?\}", _replace, line))
     if errors:
         raise RuntimeError(
             f"config.yaml L4 严格替换失败：env 变量缺失 {errors}。"
