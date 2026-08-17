@@ -446,6 +446,12 @@ preflight:
   check: disk_min_mb
   threshold_mb: 500
   fail_action: warn_only
+- name: store_tier_scripts                 # LRN-20260817-004 修法配套：preflight 强约束验 scripts 可导入，避免 store_tier 静默 None
+  check: store_tier_resolvable
+  targets:
+  - apply_tier_rules                       # scripts/ 下需有这文件
+  - _config                                # 依赖文件（apply_tier_rules 引用）
+  fail_action: abort
 
 # ===== 探针（Phase 1 开发模式，不进 SKILL.md body）=====
 # 2026-08-12 拍板：Round 1 = 端到端跑通（格式/一致性/latency），准确率 Round 2
@@ -508,6 +514,6 @@ probe:
     aftersales_interval: 升级售后提交间隔天数
   store_tier:
     scripts_dir_default: /home/gem/workspace/agent/skills/store-tier-rules/scripts   # 实际路径（独立 skill，不在 submodules/）— env STORE_TIER_RULES_DIR 覆盖
-    degrade_on_failure: true                # 分层失败 → store_tier=null + join_meta 记 reason，不中断探针
+    degrade_on_failure: false               # LRN-20260817-004：fail-fast 严格模式，store_tier=null 抛 LarkCliError 完整中断探针。需 .env STORE_TIER_RULES_DIR 可达。
   consistency_runs: 3
   csv_header_aliases: {}                    # CSV 表头名别名（飞书导出表头漂移时补）

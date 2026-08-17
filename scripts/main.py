@@ -161,6 +161,36 @@ def _pf_cron_registered(check: dict, cfg: dict) -> tuple[bool, str]:
     return True, "跳过(本地 CLI-only;OpenClaw 部署时检验)"
 
 
+def _pf_store_tier_resolvable(check: dict, cfg: dict) -> tuple[bool, str]:
+    """LRN-20260817-004：preflight 强约束验 store-tier-rules scripts 可导入。
+
+    避免 store_tier 静默降级为 null 导致 A/B/C/D 保护没生效。
+    """
+    from data_loader import resolve_store_tier_scripts_dir
+    targets = check.get("targets") or ["apply_tier_rules"]
+    scripts_dir = resolve_store_tier_scripts_dir(cfg)
+    if not scripts_dir.is_dir():
+        return False, f"scripts 目录不存在: {scripts_dir} (设 STORE_TIER_RULES_DIR env 或修 config.yaml scripts_dir_default)"
+    missing = [t for t in targets if not (scripts_dir / f"{t}.py").is_file()]
+    if missing:
+        return False, f"scripts 目录缺文件: {missing} (在 {scripts_dir})"
+    # 真实 import 验 (apply_tier_rules 依赖 _config)
+    import importlib
+    sys.path_mod = [str(scripts_dir)]
+    saved = [p for p in sys.path if p]
+    try:
+        if str(scripts_dir) not in sys.path:
+            sys.path.insert(0, str(scripts_dir))
+        mod = importlib.import_module("apply_tier_rules")
+        if not hasattr(mod, "apply_tier") or not callable(mod.apply_tier):
+            return False, "apply_tier_rules.py 缺 apply_tier 函数"
+    except Exception as e:  # noqa: BLE001
+        return False, f"import apply_tier_rules 失败: {type(e).__name__}: {e}"
+    finally:
+        sys.path[:] = saved
+    return True, f"ok ({scripts_dir})"
+
+
 def run_preflight(cfg: dict) -> list[dict]:
     """运行 config.yaml preflight 块的 5 项检查 + 环境一致性检查。
 
@@ -250,6 +280,8 @@ def run_preflight(cfg: dict) -> list[dict]:
                 ok, msg = _pf_disk_space(check)
             elif kind == "cron_registered":
                 ok, msg = _pf_cron_registered(check, cfg)
+            elif kind == "store_tier_resolvable":
+                ok, msg = _pf_store_tier_resolvable(check, cfg)
             else:
                 ok, msg = True, f"未知检查类型 {kind}（跳过）"
         except Exception as e:  # noqa: BLE001

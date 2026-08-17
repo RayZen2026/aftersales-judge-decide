@@ -504,14 +504,25 @@ def compute_store_tier(cfg: dict, store_row: Optional[dict],
                        tier_rules: Optional[dict]) -> tuple[Optional[str], Optional[str]]:
     """apply_tier(shop_id, rules, store_stats) → A/B/C/D/其他。
 
-    失败一律降级 (None, reason)，不中断探针（degrade_on_failure）。
+    LRN-20260817-004：degrade_on_failure 字段真正生效
+    - false (严格模式): 配置/算法失败 → 抛 LarkCliError fail-fast
+    - true  (降级模式): 所有失败 → return None, reason (探针友好)
+    - 业务数据缺失 (JOIN miss) 在两种模式下都走 None (不 fail 整条任务):
+      任务表 100% 覆盖, 门店维度表不是 100%, JOIN miss 是 expected 业务场景。
     """
     if store_row is None:
+        # JOIN miss 业务数据缺失 — 两种模式下都走 None (不 fail)
         return None, "store dimension JOIN miss"
     if not tier_rules:
+        # 门店分层规则未加载 — 配置问题, fail-fast (degrade_on_failure=false)
+        if not cfg.get("probe", {}).get("store_tier", {}).get("degrade_on_failure", True):
+            raise LarkCliError("store tier rules 未加载 (BITABLE_APP_TOKEN_RULES/tbllJ5aMjBhYRjIs 拉取失败)")
         return None, "store tier rules 未加载"
     scripts_dir = resolve_store_tier_scripts_dir(cfg)
     if not scripts_dir.is_dir():
+        # scripts 目录不存在 — 配置问题, fail-fast
+        if not cfg.get("probe", {}).get("store_tier", {}).get("degrade_on_failure", True):
+            raise LarkCliError(f"store-tier-rules scripts 目录不存在: {scripts_dir} (设 STORE_TIER_RULES_DIR env)")
         return None, f"store-tier-rules scripts 目录不存在: {scripts_dir}"
     try:
         if str(scripts_dir) not in sys.path:
@@ -520,7 +531,10 @@ def compute_store_tier(cfg: dict, store_row: Optional[dict],
         stats = {k: _to_number(store_row.get(k)) for k in TIER_STAT_FIELDS}
         tier = mod.apply_tier(store_row.get("店铺id"), tier_rules, stats)
         return tier, None
-    except Exception as e:  # noqa: BLE001 — 降级可配，探针不中断
+    except Exception as e:  # noqa: BLE001
+        # apply_tier 失败 — 算法问题, fail-fast
+        if not cfg.get("probe", {}).get("store_tier", {}).get("degrade_on_failure", True):
+            raise LarkCliError(f"apply_tier 失败: {e}") from e
         return None, f"apply_tier 失败: {e}"
 
 

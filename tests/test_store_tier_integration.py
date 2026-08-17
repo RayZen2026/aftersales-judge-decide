@@ -110,17 +110,32 @@ def test_compute_store_tier_returns_actual_tier(cfg, tier_rules, sample_store_ro
 
 
 def test_compute_store_tier_degrades_on_missing_store(cfg, tier_rules):
-    """store_row=None → 降级为 None + reason=store dimension JOIN miss（设计预期）。"""
+    """store_row=None → 降级为 None + reason=store dimension JOIN miss（设计预期 - 两种模式都 graceful）。"""
     tier, reason = compute_store_tier(cfg, None, tier_rules)
     assert tier is None
     assert reason == "store dimension JOIN miss"
 
 
 def test_compute_store_tier_degrades_on_missing_rules(cfg, sample_store_row):
-    """tier_rules=None → 降级为 None + reason=store tier rules 未加载（设计预期）。"""
-    tier, reason = compute_store_tier(cfg, sample_store_row, None)
+    """tier_rules=None → degrade_on_failure=true 降级 None；false 抛 LarkCliError。"""
+    from data_loader import LarkCliError
+    cfg_strict = {**cfg, "probe": {**cfg.get("probe", {}), "store_tier": {**cfg.get("probe", {}).get("store_tier", {}), "degrade_on_failure": False}}}
+    with pytest.raises(LarkCliError, match="store tier rules"):
+        compute_store_tier(cfg_strict, sample_store_row, None)
+    # 降级模式仍 graceful
+    cfg_loose = {**cfg, "probe": {**cfg.get("probe", {}), "store_tier": {**cfg.get("probe", {}).get("store_tier", {}), "degrade_on_failure": True}}}
+    tier, reason = compute_store_tier(cfg_loose, sample_store_row, None)
     assert tier is None
     assert reason == "store tier rules 未加载"
+
+
+def test_compute_store_tier_strict_mode_raises_on_missing_scripts(cfg, sample_store_row, tier_rules, monkeypatch):
+    """LRN-20260817-004：degrade_on_failure=false 下 scripts 目录不存在 → 抛 LarkCliError fail-fast。"""
+    from data_loader import LarkCliError
+    monkeypatch.setenv("STORE_TIER_RULES_DIR", "/nonexistent/store-tier-scripts")
+    cfg_strict = {**cfg, "probe": {**cfg.get("probe", {}), "store_tier": {**cfg.get("probe", {}).get("store_tier", {}), "degrade_on_failure": False}}}
+    with pytest.raises(LarkCliError, match="scripts 目录不存在"):
+        compute_store_tier(cfg_strict, sample_store_row, tier_rules)
 
 
 def test_tier_stat_fields_match_store_row(cfg, sample_store_row):
