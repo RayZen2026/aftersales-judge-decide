@@ -42,6 +42,7 @@ import json
 import logging
 import os
 import re
+import shutil
 import subprocess
 import sys
 from dataclasses import dataclass, field
@@ -133,9 +134,19 @@ def resolve_probe_output_dir(cfg: dict) -> Path:
 # ============================================================
 
 def lark_cli_bin(cfg: dict) -> str:
+    """解析 lark-cli 可执行路径。
+
+    优先级（v0.0 2026-08-17 LRN-20260817-002 修法）：
+      1. LARK_CLI_BIN env（部署覆盖 / CI 特殊路径）
+      2. shutil.which('lark-cli')（沙箱 npm-global / 系统包，v1.0.85 验证可用）
+      3. <BASE>/node_modules/.bin/lark-cli（项目自带依赖，DEPLOYMENT_CHECKLIST 安装）
+    """
     env_bin = os.environ.get("LARK_CLI_BIN")
     if env_bin:
         return env_bin
+    which_bin = shutil.which("lark-cli")
+    if which_bin:
+        return which_bin
     return str(BASE_DIR / "node_modules" / ".bin" / "lark-cli")
 
 
