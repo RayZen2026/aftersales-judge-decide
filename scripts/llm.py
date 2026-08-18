@@ -172,6 +172,12 @@ class DashScopeBackend:
         except Exception as e:  # noqa: BLE001 — 统一收敛为 LLMResponse
             latency = int((time.perf_counter() - t0) * 1000)
             kind, retry_after = classify_error(e)
+            # 详细错误日志
+            import logging
+            logger = logging.getLogger("aftersales-judge-decide")
+            logger.error(f"DashScope API调用失败: {type(e).__name__}: {e}")
+            if hasattr(e, 'response'):
+                logger.error(f"  Response: {getattr(e.response, 'text', 'N/A')}")
             return LLMResponse(content="", latency_ms=latency, model=model,
                                error=f"{type(e).__name__}: {e}",
                                error_kind=kind, retry_after=retry_after)
