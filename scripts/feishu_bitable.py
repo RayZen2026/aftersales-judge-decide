@@ -168,15 +168,16 @@ def _format_judgment_result(output: dict) -> str:
     # 构建责任描述
     parts = []
     if logistics > 0 or agent > 0:
-        # 有物流/代理人责任，分开写
-        parts.append(f"平台商家{platform}:{merchant}")
+        # 3方/4方责任：明确列出各方绝对比例（避免歧义）
+        parts.append(f"平台{platform}%")
+        parts.append(f"商家{merchant}%")
         if logistics > 0:
-            parts.append(f"物流{logistics}")
+            parts.append(f"物流{logistics}%")
         if agent > 0:
-            parts.append(f"代理人{agent}")
+            parts.append(f"代理人{agent}%")
         resp_str = " ".join(parts)
     else:
-        # 仅平台商家，简写
+        # 仅平台商家2方：简写（保持向后兼容）
         resp_str = f"平台商家{platform}:{merchant}"
 
     if action == "赔付金额" and amount:

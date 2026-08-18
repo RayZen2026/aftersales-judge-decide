@@ -105,19 +105,23 @@ def test_random_sum_100_invariant_4party():
 # ============================================================
 
 def test_already_100():
+    # 2方责任：70:30 → 商家30（已是10倍数），平台反算=70
+    # 注：allocate_correction不做约束检查，只做归一化+标准化
     assert allocate_correction({"platform": 70, "merchant": 30}) == \
            {"platform": 70, "merchant": 30, "logistics": 0, "agent": 0}
 
 
 def test_scaling_99_1():
+    # 2方责任：99:1 → 商家向上取整到10，平台反算=90
+    # 注：allocate_correction不做约束检查，LLM应该遵守50%上限
     assert allocate_correction({"platform": 99, "merchant": 1}) == \
-           {"platform": 99, "merchant": 1, "logistics": 0, "agent": 0}
+           {"platform": 90, "merchant": 10, "logistics": 0, "agent": 0}
 
 
 def test_scaling_1_2():
-    # 1:2 → 33/67（等比缩放后和=100）
+    # 1:2 → 等比缩放后33.3:66.7 → 商家向上取整到70，平台反算=30
     assert allocate_correction({"platform": 1, "merchant": 2}) == \
-           {"platform": 33, "merchant": 67, "logistics": 0, "agent": 0}
+           {"platform": 30, "merchant": 70, "logistics": 0, "agent": 0}
 
 
 def test_zero_total_returns_zero_pair():

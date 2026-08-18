@@ -276,7 +276,14 @@ def allocate_correction(responsibility: dict) -> dict:
     platform + merchant + (logistics | agent) = 100
     物流≤30%、代理人≤20%（下游校正会截断）。
     total=0 → {0,0,0,0}（破坏"和=100"不变量，报告视其为格式异常）。
+
+    标准化逻辑（2026-08-18）：
+    1. 归一化到100%
+    2. 非平台方向上取整到10的倍数
+    3. 平台 = 100% - 其他各方之和（确保平台也是10的倍数）
     """
+    import math
+
     p = responsibility.get("platform", 0) or 0
     m = responsibility.get("merchant", 0) or 0
     l = responsibility.get("logistics", 0) or 0
@@ -291,50 +298,47 @@ def allocate_correction(responsibility: dict) -> dict:
     if total == 0:
         return {"platform": 0, "merchant": 0, "logistics": 0, "agent": 0}
 
-    # 等比缩放到100
+    # 步骤1: 等比缩放到100
     scale = 100.0 / total
-    corrected = {
-        "platform": round(p * scale),
-        "merchant": round(m * scale),
-        "logistics": round(l * scale),
-        "agent": round(a * scale),
+    m_scaled = m * scale
+    l_scaled = l * scale
+    a_scaled = a * scale
+
+    # 步骤2: 上限截断（物流≤30%、代理人≤20%）
+    if l_scaled > 30:
+        l_scaled = 30
+    if a_scaled > 20:
+        a_scaled = 20
+
+    # 步骤3: 非平台方向上取整到10的倍数
+    m_std = math.ceil(m_scaled / 10) * 10
+    l_std = math.ceil(l_scaled / 10) * 10 if l_scaled > 0 else 0
+    a_std = math.ceil(a_scaled / 10) * 10 if a_scaled > 0 else 0
+
+    # 步骤4: 平台反算（确保总和=100且平台是10的倍数）
+    p_std = 100 - m_std - l_std - a_std
+
+    # 步骤5: 安全检查（平台不能为负）
+    if p_std < 0:
+        # 向上取整导致总和>100，需要调整商家（向下取整）
+        overflow = -p_std
+        m_std = m_std - math.ceil(overflow / 10) * 10
+        # 如果商家调整后仍无法满足，则调整物流/代理人
+        if m_std < 0:
+            if l_std > 0:
+                l_std = max(10, l_std + m_std)  # 从物流中扣除
+                m_std = 10
+            elif a_std > 0:
+                a_std = max(10, a_std + m_std)  # 从代理人中扣除
+                m_std = 10
+        p_std = 100 - m_std - l_std - a_std
+
+    return {
+        "platform": p_std,
+        "merchant": m_std,
+        "logistics": l_std,
+        "agent": a_std,
     }
-
-    # 四舍五入补差（补到最大方）
-    diff = 100 - sum(corrected.values())
-    if diff != 0:
-        max_party = max(corrected, key=corrected.get)
-        corrected[max_party] += diff
-
-    # 上限截断（物流≤30%、代理人≤20%）
-    if corrected["logistics"] > 30:
-        overflow = corrected["logistics"] - 30
-        corrected["logistics"] = 30
-        # 溢出部分按 platform:merchant 原比例分配
-        if corrected["platform"] + corrected["merchant"] > 0:
-            ratio = corrected["platform"] / (corrected["platform"] + corrected["merchant"])
-            corrected["platform"] += round(overflow * ratio)
-            corrected["merchant"] += overflow - round(overflow * ratio)
-        else:
-            corrected["platform"] += overflow
-
-    if corrected["agent"] > 20:
-        overflow = corrected["agent"] - 20
-        corrected["agent"] = 20
-        if corrected["platform"] + corrected["merchant"] > 0:
-            ratio = corrected["platform"] / (corrected["platform"] + corrected["merchant"])
-            corrected["platform"] += round(overflow * ratio)
-            corrected["merchant"] += overflow - round(overflow * ratio)
-        else:
-            corrected["platform"] += overflow
-
-    # 再次修正和=100（截断后可能漂移）
-    final_diff = 100 - sum(corrected.values())
-    if final_diff != 0:
-        max_party = max(corrected, key=corrected.get)
-        corrected[max_party] += final_diff
-
-    return corrected
 
 
 def _make_backend(cfg: dict):
