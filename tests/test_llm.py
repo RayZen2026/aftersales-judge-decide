@@ -90,7 +90,7 @@ class FakeBackend:
         self.script = list(script)  # [(model, error_kind, retry_after) | (model, None)]
         self.calls = []
 
-    def call(self, model, prompt, params):
+    def call(self, model, prompt, params, tools=None, messages=None):
         self.calls.append(model)
         item = self.script.pop(0)
         m, kind = item[0], item[1]

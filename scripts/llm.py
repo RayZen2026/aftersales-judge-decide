@@ -44,6 +44,7 @@ class LLMResponse:
     error_kind: Optional[str] = None
     retry_after: Optional[float] = None
     completion_tokens: Optional[int] = None
+    tool_calls: Optional[list[dict]] = None  # function calling support
 
 
 class ChainExhaustedError(RuntimeError):
@@ -55,7 +56,7 @@ class ChainExhaustedError(RuntimeError):
 
 
 class Backend(Protocol):
-    def call(self, model: str, prompt: str, params: dict) -> LLMResponse: ...
+    def call(self, model: str, prompt: str, params: dict, tools: Optional[list[dict]] = None, messages: Optional[list[dict]] = None) -> LLMResponse: ...
 
 
 # ============================================================
@@ -129,24 +130,45 @@ class DashScopeBackend:
         self.max_tokens_cap = p.get("max_tokens", 8192)
         self.temperature_default = p.get("temperature", 0.1)
 
-    def call(self, model: str, prompt: str, params: dict) -> LLMResponse:
+    def call(self, model: str, prompt: str, params: dict, tools: Optional[list[dict]] = None, messages: Optional[list[dict]] = None) -> LLMResponse:
         t0 = time.perf_counter()
         max_tokens = params.get("max_tokens")
         max_tokens = min(max_tokens, self.max_tokens_cap) if max_tokens else self.max_tokens_cap
         try:
-            resp = self.client.chat.completions.create(
-                model=model,
-                messages=[{"role": "user", "content": prompt}],
-                max_tokens=max_tokens,
-                temperature=params.get("temperature", self.temperature_default),
-                timeout=self.timeout,
-            )
+            call_kwargs = {
+                "model": model,
+                "messages": messages if messages else [{"role": "user", "content": prompt}],
+                "max_tokens": max_tokens,
+                "temperature": params.get("temperature", self.temperature_default),
+                "timeout": self.timeout,
+            }
+            if tools:
+                call_kwargs["tools"] = tools
+            resp = self.client.chat.completions.create(**call_kwargs)
             latency = int((time.perf_counter() - t0) * 1000)
             usage = getattr(resp, "usage", None)
+
+            # 检查是否有tool_calls
+            message = resp.choices[0].message
+            tool_calls = None
+            if hasattr(message, "tool_calls") and message.tool_calls:
+                tool_calls = [
+                    {
+                        "id": tc.id,
+                        "type": tc.type,
+                        "function": {
+                            "name": tc.function.name,
+                            "arguments": tc.function.arguments,
+                        }
+                    }
+                    for tc in message.tool_calls
+                ]
+
             return LLMResponse(
-                content=(resp.choices[0].message.content or ""),
+                content=(message.content or ""),
                 latency_ms=latency, model=model,
-                completion_tokens=getattr(usage, "completion_tokens", None))
+                completion_tokens=getattr(usage, "completion_tokens", None),
+                tool_calls=tool_calls)
         except Exception as e:  # noqa: BLE001 — 统一收敛为 LLMResponse
             latency = int((time.perf_counter() - t0) * 1000)
             kind, retry_after = classify_error(e)
@@ -191,10 +213,12 @@ class MiaodaBackend:
         args.append("--json")
         return args
 
-    def call(self, model: str, prompt: str, params: dict) -> LLMResponse:
+    def call(self, model: str, prompt: str, params: dict, tools: Optional[list[dict]] = None, messages: Optional[list[dict]] = None) -> LLMResponse:
         """通过 openclaw subprocess 调用妙搭 LLM。
 
         返回 LLMResponse；所有异常收敛到 error_kind，不上抛。
+        注：MiaodaBackend 暂不支持 tools 和 messages（妙搭 innerapi 无 function calling），
+        这两个参数被忽略。
         """
         import json
         import subprocess
@@ -269,10 +293,14 @@ class MiaodaBackend:
 
 def call_with_fallback(backend: Backend, prompt: str, chain: list[str],
                        params: dict, retry_cfg: dict,
-                       sleep_fn: Callable[[float], None] = time.sleep) -> LLMResponse:
+                       sleep_fn: Callable[[float], None] = time.sleep,
+                       tools: Optional[list[dict]] = None,
+                       messages: Optional[list[dict]] = None) -> LLMResponse:
     """按链顺序调用 + 模型内重试 + 降级。全部失败抛 ChainExhaustedError。
 
     sleep_fn 注入便于测试（无真实等待）。
+    tools: function calling 工具定义（可选）。
+    messages: 多轮对话消息历史（可选，用于tool calling循环）。
     """
     if not chain:
         raise ValueError("chain 为空")
@@ -282,7 +310,7 @@ def call_with_fallback(backend: Backend, prompt: str, chain: list[str],
     last: Optional[LLMResponse] = None
     for model in chain:
         for attempt in range(max_retry + 1):
-            res = backend.call(model, prompt, params)
+            res = backend.call(model, prompt, params, tools, messages)
             res.attempts = attempt + 1
             if res.error is None:
                 return res
