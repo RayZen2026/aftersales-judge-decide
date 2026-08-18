@@ -311,9 +311,16 @@ def run(cfg: dict, backend, task_row: dict, dimension_data: dict,
     ctx = build_context(cfg, task_row, dimension_data, judgment_rules)
     prompt = render_prompt(ctx)
 
-    # 根据环境选择chain：生产用降级链，开发用单模型
-    use_prod = cfg.get("llm", {}).get("use_production_chain", False)
-    chain = select_chain(cfg, "single") if use_prod else dev_chain(cfg)
+    # 根据backend类型选择chain：DashScope用开发单模型，Miaoda用生产降级链
+    from llm import DashScopeBackend, MiaodaBackend  # noqa: PLC0415
+    if isinstance(backend, DashScopeBackend):
+        chain = dev_chain(cfg)  # 开发环境：qwen-plus-latest单模型
+    elif isinstance(backend, MiaodaBackend):
+        chain = select_chain(cfg, "single")  # 生产环境：4+2降级链
+    else:
+        # 兜底：按配置决定
+        use_prod = cfg.get("llm", {}).get("use_production_chain", False)
+        chain = select_chain(cfg, "single") if use_prod else dev_chain(cfg)
 
     params = cfg["llm"]["params"]
     retry_cfg = cfg["llm"]["retry"]
@@ -324,6 +331,7 @@ def run(cfg: dict, backend, task_row: dict, dimension_data: dict,
     # Tool calling 循环（最多5轮：initial call + 4轮tool调用）
     max_tool_rounds = 5
     messages = [{"role": "user", "content": prompt}]
+    tool_calls_count = 0  # 统计工具调用次数
 
     for round_idx in range(max_tool_rounds):
         # LLM 调用
@@ -334,25 +342,42 @@ def run(cfg: dict, backend, task_row: dict, dimension_data: dict,
             return AgentResult(ok=False, failure_type=e.error_kind or "llm_5xx",
                                prompt=prompt)
         if llm_res.error:
+            # 添加详细错误日志
+            import logging
+            logger = logging.getLogger("aftersales-judge-decide")
+            logger.error(f"LLM调用失败 round={round_idx}: error={llm_res.error}, "
+                        f"error_kind={llm_res.error_kind}")
             return AgentResult(ok=False,
                                failure_type=map_failure_type(llm_res, []),
                                llm_response=llm_res, prompt=prompt)
 
         # 检查是否有tool_calls
         if llm_res.tool_calls:
+            tool_calls_count += len(llm_res.tool_calls)
+            # 添加日志
+            import logging
+            logger = logging.getLogger("aftersales-judge-decide")
+            logger.info(f"[Function Calling] Round {round_idx + 1}: "
+                       f"LLM调用了{len(llm_res.tool_calls)}个工具")
+
             # 执行工具调用
             tool_results = []
             for tc in llm_res.tool_calls:
                 if tc["function"]["name"] == "normalize_responsibility":
                     try:
                         args = json.loads(tc["function"]["arguments"])
+                        logger.info(f"[Function Calling] 执行normalize_responsibility: "
+                                   f"输入={json.dumps(args, ensure_ascii=False)}")
                         result = execute_normalize_responsibility(args)
+                        logger.info(f"[Function Calling] 归一化结果: "
+                                   f"{json.dumps(result, ensure_ascii=False)}")
                         tool_results.append({
                             "role": "tool",
                             "tool_call_id": tc["id"],
                             "content": json.dumps(result, ensure_ascii=False)
                         })
                     except Exception as e:  # noqa: BLE001
+                        logger.error(f"[Function Calling] 工具执行失败: {e}")
                         tool_results.append({
                             "role": "tool",
                             "tool_call_id": tc["id"],
@@ -369,6 +394,11 @@ def run(cfg: dict, backend, task_row: dict, dimension_data: dict,
             continue  # 继续下一轮LLM调用
 
         # 没有tool_calls，说明LLM已给出最终答案
+        if tool_calls_count > 0:
+            import logging
+            logger = logging.getLogger("aftersales-judge-decide")
+            logger.info(f"[Function Calling] 总共调用了{tool_calls_count}次工具，"
+                       f"经过{round_idx + 1}轮对话后得到最终答案")
         break
 
     # JSON 提取
