@@ -626,7 +626,8 @@ def _run_workflow(cfg: dict, limit: int = None, test_mode: bool = False) -> dict
         tasks, record_ids = stage1_fetch(cfg)
         if not tasks:
             logger.info("无待处理任务, 本次 cron 空跑 (原则 10 不通知)")
-            return {"processed": 0, "skipped": 0, "results": {}}
+            empty_stats = {s: 0 for s in ("completed", "failed", "manual_review", "pending", "processing")}
+            return {"processed": 0, "skipped": 0, "results": {}, "stats": empty_stats, "test_mode": test_mode}
 
         # stale 兜底（在 Stage1 拉出列表后，Stage3 遍历前）
         check_stale_and_reclaim(cfg, fb)
