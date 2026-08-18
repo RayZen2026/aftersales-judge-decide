@@ -34,6 +34,49 @@ from main import allocate_correction
 
 BASE_ASSETS = None  # 延迟初始化（避免顶层 import Path 耦合）
 
+# ============================================================
+# Function Calling 工具定义
+# ============================================================
+
+NORMALIZE_RESPONSIBILITY_TOOL = {
+    "type": "function",
+    "function": {
+        "name": "normalize_responsibility",
+        "description": "归一化责任比例到100%并标准化到10的倍数。输入4方初始权重，返回标准化后的比例（平台+商家+物流+代理人=100%，且都是10的倍数）。",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "platform": {
+                    "type": "number",
+                    "description": "平台初始权重"
+                },
+                "merchant": {
+                    "type": "number",
+                    "description": "商家初始权重"
+                },
+                "logistics": {
+                    "type": "number",
+                    "description": "物流初始权重（默认0）"
+                },
+                "agent": {
+                    "type": "number",
+                    "description": "代理人初始权重（默认0）"
+                }
+            },
+            "required": ["platform", "merchant"]
+        }
+    }
+}
+
+
+def execute_normalize_responsibility(args: dict) -> dict:
+    """执行归一化工具函数。
+
+    args: {"platform": 30, "merchant": 70, "logistics": 0, "agent": 0}
+    返回: {"platform": 30, "merchant": 70, "logistics": 0, "agent": 0}
+    """
+    return allocate_correction(args)
+
 
 def _assets_dir():
     from pathlib import Path
@@ -260,6 +303,8 @@ def run(cfg: dict, backend, task_row: dict, dimension_data: dict,
 
     backend: DashScopeBackend（开发）或 MiaodaBackend（生产，Phase 4）。
     返回 AgentResult；异常全部收敛到 AgentResult.failure_type，不上抛。
+
+    支持 function calling：LLM 可调用 normalize_responsibility 工具进行归一化计算。
     """
     from llm import select_chain, dev_chain  # noqa: PLC0415
 
@@ -273,16 +318,58 @@ def run(cfg: dict, backend, task_row: dict, dimension_data: dict,
     params = cfg["llm"]["params"]
     retry_cfg = cfg["llm"]["retry"]
 
-    # LLM 调用
-    try:
-        llm_res = call_with_fallback(backend, prompt, chain, params, retry_cfg)
-    except ChainExhaustedError as e:
-        return AgentResult(ok=False, failure_type=e.error_kind or "llm_5xx",
-                           prompt=prompt)
-    if llm_res.error:
-        return AgentResult(ok=False,
-                           failure_type=map_failure_type(llm_res, []),
-                           llm_response=llm_res, prompt=prompt)
+    # 准备工具定义
+    tools = [NORMALIZE_RESPONSIBILITY_TOOL]
+
+    # Tool calling 循环（最多5轮：initial call + 4轮tool调用）
+    max_tool_rounds = 5
+    messages = [{"role": "user", "content": prompt}]
+
+    for round_idx in range(max_tool_rounds):
+        # LLM 调用
+        try:
+            llm_res = call_with_fallback(backend, prompt, chain, params, retry_cfg,
+                                         tools=tools, messages=messages)
+        except ChainExhaustedError as e:
+            return AgentResult(ok=False, failure_type=e.error_kind or "llm_5xx",
+                               prompt=prompt)
+        if llm_res.error:
+            return AgentResult(ok=False,
+                               failure_type=map_failure_type(llm_res, []),
+                               llm_response=llm_res, prompt=prompt)
+
+        # 检查是否有tool_calls
+        if llm_res.tool_calls:
+            # 执行工具调用
+            tool_results = []
+            for tc in llm_res.tool_calls:
+                if tc["function"]["name"] == "normalize_responsibility":
+                    try:
+                        args = json.loads(tc["function"]["arguments"])
+                        result = execute_normalize_responsibility(args)
+                        tool_results.append({
+                            "role": "tool",
+                            "tool_call_id": tc["id"],
+                            "content": json.dumps(result, ensure_ascii=False)
+                        })
+                    except Exception as e:  # noqa: BLE001
+                        tool_results.append({
+                            "role": "tool",
+                            "tool_call_id": tc["id"],
+                            "content": f"Error: {e}"
+                        })
+
+            # 构建下一轮messages（assistant message with tool_calls + tool results）
+            messages.append({
+                "role": "assistant",
+                "content": llm_res.content or "",
+                "tool_calls": llm_res.tool_calls
+            })
+            messages.extend(tool_results)
+            continue  # 继续下一轮LLM调用
+
+        # 没有tool_calls，说明LLM已给出最终答案
+        break
 
     # JSON 提取
     try:

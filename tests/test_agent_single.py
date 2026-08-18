@@ -161,7 +161,7 @@ class FakeBackend:
             content=content, latency_ms=100, model="qwen",
             error=("err" if error_kind else None), error_kind=error_kind)
 
-    def call(self, model, prompt, params):
+    def call(self, model, prompt, params, tools=None, messages=None):
         return self.res
 
 
@@ -202,7 +202,7 @@ def test_run_manual_review_signal_action():
 
 
 def test_run_corrects_responsibility():
-    # 1:2 → 33:67（4方责任，logistics/agent=0）
+    # 1:2 → 30:70（向上取整到10的倍数，Phase 5.3修订）
     out = {**VALID_OUTPUT, "responsibility": {"platform": 1, "merchant": 2}}
     content = json.dumps(out, ensure_ascii=False)
     result = ag.run(CFG, FakeBackend(content), TASK_ROW, DIM, RULES)
@@ -210,7 +210,7 @@ def test_run_corrects_responsibility():
     corrected = result.output["responsibility_corrected"]
     # Phase 5: 4方和=100
     assert corrected["platform"] + corrected["merchant"] + corrected["logistics"] + corrected["agent"] == 100
-    assert corrected == {"platform": 33, "merchant": 67, "logistics": 0, "agent": 0}
+    assert corrected == {"platform": 30, "merchant": 70, "logistics": 0, "agent": 0}
 
 
 # ── Schema v4.0 新增测试 ──

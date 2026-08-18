@@ -231,9 +231,11 @@ def test_build_result_fields_with_4party():
         "responsibility_corrected": resp,
     }
     fields = fb.build_result_fields("UAS2", out)
-    assert "平台商家10:60" in fields["判责结果"]
-    assert "物流20" in fields["判责结果"]
-    assert "代理人10" in fields["判责结果"]
+    # 2026-08-18修订：3方/4方责任用明确百分比（避免"平台商家30:40"歧义）
+    assert "平台10%" in fields["判责结果"]
+    assert "商家60%" in fields["判责结果"]
+    assert "物流20%" in fields["判责结果"]
+    assert "代理人10%" in fields["判责结果"]
     assert fields["提交结果类型"] == "同意"
 
 
