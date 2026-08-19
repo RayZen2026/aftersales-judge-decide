@@ -102,6 +102,15 @@ table_id 一律以 `lark-cli` 实查为准。2026-08-12 已修复：`config.yaml
 ## 6. 易忘点（开发前必查）
 
 - **实物优先于文字预期**：路径/字段/ID 必须 lark-cli 实查；`ls` 看到文件存在 ≠ 文件在预期位置。
+- **lark-cli 查表字段命令**（易忘）：
+  ```bash
+  # 列出某表所有字段（含 id/name/description）
+  ./node_modules/.bin/lark-cli base +field-list \
+    --base-token <app_token> \
+    --table-id <table_id> \
+    --jq '.data.fields[] | "\(.id) \(.name) \(.description // "")"'
+  ```
+  注意：flag 是 `--base-token`（不是 `--app-token`）；命令是 `base +field-list`（不是 `bitable:field:list`）。
 - **实物路径 vs doc 拍板路径**：实物为 `assets/agent{1,2,3}_prompt_template.j2`（根）+ `assets/eval/eval_standard.md`；不迁移到 doc §11.1 的 `templates/`/`policies/` 路径，两边都不动。
 - **SKILL.md 有意删除**：待探针拍板后重建；git 里的 v9 版含过时表述（N=3 占位），勿恢复。
 - **config.yaml 严格替换**：`${VAR}` 引用 env，缺失即启动失败；preflight 启动检查 5 项（feishu 凭据 / bitable 可达 / LLM 链 / cron 冲突 / 磁盘空间）。

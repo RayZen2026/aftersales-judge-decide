@@ -70,7 +70,7 @@ def load_config(path: Optional[Path] = None) -> dict:
             continue
         def _replace(m, _errors=errors):
             var = m.group(1)
-            default = m.group(2)
+            default = m.group(2)  # None if no :default
             val = os.environ.get(var)
             if val is None:
                 if default is not None:
@@ -225,7 +225,9 @@ def run_preflight(cfg: dict) -> list[dict]:
 
     elif env == "development":
         # 开发环境警告（允许但提醒）
-        if use_prod_chain:
+        # provider 显式设置时（如 dashscope），use_production_chain 不生效，无需告警
+        provider_explicit = cfg.get("llm", {}).get("provider", "").lower()
+        if use_prod_chain and not provider_explicit:
             results.append({
                 "name": "environment_consistency",
                 "ok": True,
