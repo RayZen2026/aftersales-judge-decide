@@ -260,6 +260,12 @@ dimensions:
     - id: fldYdftqqN
       name: 近7天平台抽佣金额
       description: 近7天(T-6至T0)的门店在交易过程中平台根据商品抽佣率得到的归属于平台收入求和
+    - id: fldcOfE5LY
+      name: 近14天平台抽佣金额
+      description: 近14天(T-13至T0)的门店在交易过程中平台根据商品抽佣率得到的归属于平台收入求和
+    - id: flddM3rjFo
+      name: 近30天平台抽佣金额
+      description: 近30天(T-29至T0)的门店在交易过程中平台根据商品抽佣率得到的归属于平台收入求和
     - id: fldbKdHSV0
       name: 近30天下单天数
       description: 近30天(T-29至T0)的门店交易下单天数
