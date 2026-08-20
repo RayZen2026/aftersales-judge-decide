@@ -81,8 +81,18 @@ def to_table_value(state: str) -> str:
     return STATE_TABLE_VALUES[state]
 
 
-def from_table_value(value: str) -> str:
-    """任务表字段值 → 内部键（容错别名；未知值抛错 = 数据污染 fail fast）。"""
+def from_table_value(value: str | list) -> str:
+    """任务表字段值 → 内部键（容错别名；未知值抛错 = 数据污染 fail fast）。
+
+    飞书字段可能返回字符串（单选）或列表（多选），这里统一处理。
+    """
+    # 处理列表情况（多选字段）
+    if isinstance(value, list):
+        if not value:
+            value = ""
+        else:
+            value = value[0]  # 取第一个值
+
     state = TABLE_VALUE_ALIASES.get((value or "").strip())
     if state is None:
         raise ValueError(f"未知处理状态值: {value!r}（data_corrupted 候选）")
