@@ -493,6 +493,7 @@ def process_item(cfg: dict, sample: dict, record_id: str,
     )
 
     task_row = sample["task"]
+    dimension_data = sample.get("dimension_data", {})
     item_id = sample["item_id"] or "?"
     now = datetime.now(CST)
     stale_min = cfg["lock"]["stale_minutes"]
@@ -533,7 +534,7 @@ def process_item(cfg: dict, sample: dict, record_id: str,
             notify(cfg, notify_dedup, item_id, result.failure_type or "llm_ability_exceeded",
                    "; ".join(result.format_errors or [result.failure_type or ""]), now)
         if decision.write_result_table and result.output:
-            _write_result(cfg, fb, item_id, result.output, test_mode=test_mode)
+            _write_result(cfg, fb, item_id, result.output, task_row=task_row, dimension_data=dimension_data, test_mode=test_mode)
         logger.info("%s 失败 %s → %s", item_id, result.failure_type, target)
         return target
 
@@ -545,14 +546,14 @@ def process_item(cfg: dict, sample: dict, record_id: str,
         notify(cfg, notify_dedup, item_id, "rule_conflict",
                "规则无匹配或模型判定需人工", now)
         if result.output:
-            _write_result(cfg, fb, item_id, result.output, test_mode=test_mode)
+            _write_result(cfg, fb, item_id, result.output, task_row=task_row, dimension_data=dimension_data, test_mode=test_mode)
         logger.info("%s 需人工", item_id)
         return target
 
     # 成功终态
     if not test_mode:
         fb.release_lock(cfg, record_id, "completed")
-    _write_result(cfg, fb, item_id, result.output, test_mode=test_mode)
+    _write_result(cfg, fb, item_id, result.output, task_row=task_row, dimension_data=dimension_data, test_mode=test_mode)
     logger.info("%s 完成: action=%s amount=%s",
                 item_id,
                 result.output.get("action"),
@@ -560,15 +561,21 @@ def process_item(cfg: dict, sample: dict, record_id: str,
     return "completed"
 
 
-def _write_result(cfg: dict, fb, item_id: str, output: dict, test_mode: bool = False) -> None:
+def _write_result(cfg: dict, fb, item_id: str, output: dict, task_row: dict = None, dimension_data: dict = None, test_mode: bool = False) -> None:
     """写判责结果表（生产表或测试表）。
 
-    test_mode=True: 写测试表（15字段，含judgment_basis 8维展开）
-    test_mode=False: 写生产表（5字段），但如果result_table指向测试表则写15字段
+    Args:
+        cfg: 配置字典
+        fb: feishu_bitable模块
+        item_id: 升级售后单号
+        output: LLM输出结果
+        task_row: 任务表原始数据（用于透传输入字段到结果表）
+        dimension_data: 维度数据（用于获取门店等级等计算字段）
+        test_mode: True=写测试表（22字段），False=写生产表（5字段）
     """
     # 获取目标表ID，判断是否为测试表
     result_table_id = cfg['dimensions']['result_table']['table_id']
-    fields = fb.build_result_fields(item_id, output, test_mode=test_mode, table_id=result_table_id)
+    fields = fb.build_result_fields(item_id, output, task_row=task_row, dimension_data=dimension_data, test_mode=test_mode, table_id=result_table_id)
     try:
         fb.upsert_result_record(cfg, fields, test_mode=test_mode)
     except Exception as e:  # noqa: BLE001

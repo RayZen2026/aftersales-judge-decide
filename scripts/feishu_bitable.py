@@ -207,12 +207,20 @@ def _derive_submission_result(action: str) -> str:
     return "需人工"
 
 
-def build_result_fields(order_id: str, output: dict, test_mode: bool = False, table_id: str = None) -> dict:
+def build_result_fields(order_id: str, output: dict, task_row: dict = None, dimension_data: dict = None, test_mode: bool = False, table_id: str = None) -> dict:
     """1-AGENT 输出 schema v4 → 判责结果表写入字段。
 
-    字段集判断逻辑（2026-08-16修订）：
-    1. test_mode=True → 15字段（测试表）
-    2. table_id=tblQ1btbmJsBESGd → 15字段（升级售后结果表-测试使用）
+    Args:
+        order_id: 升级售后单号
+        output: LLM输出的完整结果
+        task_row: 任务表原始数据（用于透传输入字段到结果表）
+        dimension_data: 维度数据（用于获取门店等级等计算字段）
+        test_mode: 是否测试模式
+        table_id: 目标表ID
+
+    字段集判断逻辑（2026-08-20修订）：
+    1. test_mode=True → 22字段（测试表：5基础+11LLM输出+11输入透传-重复5）
+    2. table_id=tblQ1btbmJsBESGd → 22字段（升级售后结果表-测试使用）
     3. 其他 → 5字段（生产表 tblQFKdViDyghC65）
     """
     action = output.get("action") or "需人工"
@@ -227,7 +235,7 @@ def build_result_fields(order_id: str, output: dict, test_mode: bool = False, ta
         "判责报告": _format_judgment_report(output),
     }
 
-    # 测试表扩展字段（11个）：test_mode=True 或 指向测试表
+    # 测试表扩展字段（22个）：test_mode=True 或 指向测试表
     if test_mode or table_id == "tblQ1btbmJsBESGd":
         # 建议动作：映射LLM输出到飞书select选项名称
         recommended = output.get("recommended_action") or "赔付金额"
@@ -260,5 +268,29 @@ def build_result_fields(order_id: str, output: dict, test_mode: bool = False, ta
             "关键因素": ", ".join(output.get("key_factors") or []),
             "责任计算过程": responsibility_calc_str,
         })
+
+        # 新增：11个输入数据字段（从task_row和dimension_data透传）
+        if task_row:
+            # 获取门店等级（从dimension_data计算得出，不在task_row中）
+            store_tier = ""
+            if dimension_data:
+                store_tier = dimension_data.get("store_tier") or ""
+
+            fields.update({
+                # 数值型字段
+                "升级售后提交间隔天数": task_row.get("升级售后提交间隔天数", 0),
+                "是否商家问题": task_row.get("是否商家问题", 0),
+                "是否代理人问题": task_row.get("是否代理人问题", 0),
+                "是否物流问题": task_row.get("是否物流问题", 0),
+                "是否全品类商家": task_row.get("是否全品类商家", 0),
+                "诉求赔付金额": task_row.get("诉求赔付金额", 0),
+                "是否严重品质问题": task_row.get("是否严重品质问题", 0),
+                "是否平台问题": task_row.get("是否平台问题", 0),
+
+                # 文本型字段
+                "诉求类型": task_row.get("诉求类型", ""),
+                "门店等级": store_tier,  # 从dimension_data获取
+                "升级售后类型": task_row.get("升级售后类型", ""),
+            })
 
     return fields
