@@ -260,6 +260,80 @@ def validate_schema(obj: dict) -> list[str]:
 
 
 # ============================================================
+# 运行时校验（优化1：防御性校验）
+# ============================================================
+
+def validate_and_fix_responsibility(result: dict, task_data: dict, logger) -> dict:
+    """
+    校验并修正责任比例输出（优化1：运行时校验）
+
+    校验规则：
+    1. is_logistics_issue=0 时强制 logistics=0
+    2. is_agent_issue=0 时强制 agent=0
+    3. 责任比例和必须=100%
+    4. 所有比例必须是10的倍数
+    5. 平台比例范围10-50%，物流≤30%，代理人≤20%
+
+    Args:
+        result: LLM输出的完整结果（含responsibility字段）
+        task_data: 任务数据（含是否物流问题/是否代理人问题字段）
+        logger: 日志对象
+
+    Returns:
+        修正后的result（修改responsibility字段）
+    """
+    resp = result.get("responsibility", {}).copy()
+    modified = False
+
+    # 规则1: is_logistics_issue=0 时强制 logistics=0
+    is_logistics = task_data.get("是否物流问题", 0)
+    if is_logistics == 0 and resp.get("logistics", 0) != 0:
+        logger.warning(f"[运行时校验] 字段约束失败: is_logistics_issue=0 但输出logistics={resp['logistics']}%，强制修正为0")
+        resp["logistics"] = 0
+        modified = True
+
+    # 规则2: is_agent_issue=0 时强制 agent=0
+    is_agent = task_data.get("是否代理人问题", 0)
+    if is_agent == 0 and resp.get("agent", 0) != 0:
+        logger.warning(f"[运行时校验] 字段约束失败: is_agent_issue=0 但输出agent={resp['agent']}%，强制修正为0")
+        resp["agent"] = 0
+        modified = True
+
+    # 规则3: 和=100%
+    total = sum(resp.values())
+    if total != 100:
+        logger.warning(f"[运行时校验] 责任比例和={total}% ≠ 100%，重新归一化")
+        resp = allocate_correction(resp)
+        modified = True
+
+    # 规则4: 10的倍数
+    for party, value in resp.items():
+        if value % 10 != 0:
+            logger.warning(f"[运行时校验] {party}={value}%不是10的倍数，需重新归一化")
+            resp = allocate_correction(resp)
+            modified = True
+            break
+
+    # 规则5: 范围约束（仅警告，不强制修正）
+    platform = resp.get("platform", 0)
+    logistics = resp.get("logistics", 0)
+    agent = resp.get("agent", 0)
+
+    if not (10 <= platform <= 50):
+        logger.warning(f"[运行时校验] 平台比例{platform}%超出10-50%范围")
+    if logistics > 30:
+        logger.warning(f"[运行时校验] 物流比例{logistics}%超出≤30%约束")
+    if agent > 20:
+        logger.warning(f"[运行时校验] 代理人比例{agent}%超出≤20%约束")
+
+    if modified:
+        result["responsibility"] = resp
+        logger.info(f"[运行时校验] 修正后责任比例: {json.dumps(resp, ensure_ascii=False)}")
+
+    return result
+
+
+# ============================================================
 # 失败类型映射
 # ============================================================
 
@@ -417,6 +491,11 @@ def run(cfg: dict, backend, task_row: dict, dimension_data: dict,
                            failure_type=map_failure_type(None, errors),
                            format_errors=errors,
                            llm_response=llm_res, prompt=prompt)
+
+    # 运行时校验（优化1：防御性校验）
+    import logging
+    logger = logging.getLogger("aftersales-judge-decide")
+    obj = validate_and_fix_responsibility(obj, ctx["dimension_data"]["task"], logger)
 
     # 分配校正（DRY from main.py）
     corrected = allocate_correction(obj.get("responsibility") or {})
