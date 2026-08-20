@@ -387,18 +387,24 @@ def check_stale_and_reclaim(cfg: dict, fb) -> int:
 
     fb: feishu_bitable 模块（注入便于测试）。返回重抢数量。
     """
-    from data_loader import record_list, normalize_date  # noqa: PLC0415
+    from data_loader import record_list, normalize_date, LarkCliError  # noqa: PLC0415
     from lock import check_lockable, is_stale            # noqa: PLC0415
     from state_machine import STATE_TABLE_VALUES         # noqa: PLC0415
 
     stale_min = cfg["lock"]["stale_minutes"]
     now = datetime.now(CST)
     tt = cfg["task_table"]
-    env = record_list(cfg, app_token=tt["app_token"], table_id=tt["table_id"],
-                      field_names=["升级售后单号", "处理状态", "更新时间"],
-                      filter_json=json.dumps({"logic": "and", "conditions": [
-                          ["处理状态", "==", STATE_TABLE_VALUES["processing"]]
-                      ]}, ensure_ascii=False), limit=200)
+
+    try:
+        env = record_list(cfg, app_token=tt["app_token"], table_id=tt["table_id"],
+                          field_names=["升级售后单号", "处理状态", "更新时间"],
+                          filter_json=json.dumps({"logic": "and", "conditions": [
+                              ["处理状态", "==", STATE_TABLE_VALUES["processing"]]
+                          ]}, ensure_ascii=False), limit=200)
+    except LarkCliError as e:
+        # 如果filter失败（可能是选项不存在），跳过stale检查
+        logger.warning("stale检查跳过: filter失败（可能是'已处理-处理中'选项不存在）: %s", str(e)[:200])
+        return 0
     reclaimed = 0
     for row, rid in zip(env.records, env.record_ids):
         if rid and is_stale(row.get("更新时间"), now, stale_min):

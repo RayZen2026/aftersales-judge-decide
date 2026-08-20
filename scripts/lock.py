@@ -84,20 +84,24 @@ def check_lockable(state: str, updated_at_value, now: datetime,
     return LockCheck(False, False, f"{state} 最终态，不抢锁")
 
 
-def acquire_fields() -> dict[str, str]:
-    """抢锁写入载荷：处理状态 → 已处理-处理中（更新时间由系统自动刷新）。"""
-    return {TASK_STATUS_FIELD: "已处理-处理中"}
+def acquire_fields() -> dict[str, list]:
+    """抢锁写入载荷：处理状态 → 已处理-处理中（更新时间由系统自动刷新）。
+
+    飞书单选字段写入时需要列表格式（即使 multiple=false）。
+    """
+    return {TASK_STATUS_FIELD: ["已处理-处理中"]}
 
 
-def release_fields(target_state: str) -> dict[str, str]:
+def release_fields(target_state: str) -> dict[str, list]:
     """释放写入载荷：处理状态 → 终态值（更新时间保留历史，不清除）。
 
     target_state ∈ completed/failed/manual_review/pending（config lock.release_states + 字段缺失回退）。
+    飞书单选字段写入时需要列表格式（即使 multiple=false）。
     """
     from state_machine import to_table_value  # 延迟 import 避免顶层耦合
     if target_state not in ("completed", "failed", "manual_review", "pending"):
         raise ValueError(f"释放目标状态非法: {target_state}（release_states 已锁）")
-    return {TASK_STATUS_FIELD: to_table_value(target_state)}
+    return {TASK_STATUS_FIELD: [to_table_value(target_state)]}
 
 
 def stale_filter_threshold(now: datetime, stale_minutes: int) -> datetime:

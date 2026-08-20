@@ -133,6 +133,9 @@ dimensions:
     - id: fldbUrTXIH
       name: 判责报告
       description: 判责依据详情（judgment_summary + judgment_basis，供业务人员查阅）
+    - id: fldGbpQOus
+      name: 责任计算过程
+      description: 责任比例计算过程（responsibility_calculation，JSON格式，包含base/adjustments/after_adjustments/normalized）
   test_result_table:                                # Phase 4 端到端独立测试表
     app_token: ${BITABLE_APP_TOKEN_FIELDS}
     table_id: tblQ1btbmJsBESGd

@@ -227,7 +227,7 @@ def build_result_fields(order_id: str, output: dict, test_mode: bool = False, ta
         "判责报告": _format_judgment_report(output),
     }
 
-    # 测试表扩展字段（10个）：test_mode=True 或 指向测试表
+    # 测试表扩展字段（11个）：test_mode=True 或 指向测试表
     if test_mode or table_id == "tblQ1btbmJsBESGd":
         # 建议动作：映射LLM输出到飞书select选项名称
         recommended = output.get("recommended_action") or "赔付金额"
@@ -238,6 +238,14 @@ def build_result_fields(order_id: str, output: dict, test_mode: bool = False, ta
             recommended_select = "拒绝赔付"
         else:
             recommended_select = "赔付金额"
+
+        # 责任计算过程：转为JSON字符串
+        responsibility_calc = output.get("responsibility_calculation")
+        if responsibility_calc:
+            import json
+            responsibility_calc_str = json.dumps(responsibility_calc, ensure_ascii=False, indent=2)
+        else:
+            responsibility_calc_str = ""
 
         fields.update({
             "建议动作": recommended_select,
@@ -250,6 +258,7 @@ def build_result_fields(order_id: str, output: dict, test_mode: bool = False, ta
             "规则引用": basis.get("rule_reference") or "",
             "决策对比": basis.get("decision_comparison") or "",
             "关键因素": ", ".join(output.get("key_factors") or []),
+            "责任计算过程": responsibility_calc_str,
         })
 
     return fields

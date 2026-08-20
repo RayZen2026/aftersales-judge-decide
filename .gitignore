@@ -45,6 +45,7 @@ state/
 # 本地临时文件
 trash/
 submodules/
+validation/
 scripts/probe_gt_samples_simple.py
 scripts/probe_gt_samples.py
 run_probe_gt_optimized.sh

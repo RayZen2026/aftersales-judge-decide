@@ -384,8 +384,15 @@ def fetch_tasks_live(cfg: dict, limit: int) -> Envelope:
                       field_names=names, view_id=view_id)
     total = len(env.records)
     status_in = set(cfg["probe"]["task_fetch"].get("status_in") or ["未处理", "已处理-失败"])
+
+    # 处理状态字段可能是字符串或列表（多选字段）
+    def match_status(status_value):
+        if isinstance(status_value, list):
+            return any(s in status_in for s in status_value)
+        return status_value in status_in
+
     kept = [(r, rid) for r, rid in zip(env.records, env.record_ids)
-            if r.get("处理状态") in status_in][:limit]
+            if match_status(r.get("处理状态"))][:limit]
     env.records = [r for r, _ in kept]
     env.record_ids = [rid for _, rid in kept]
     logger.info("任务表拉取: 视图 %s 共 %d 条 → 处理状态∈%s 保留 %d 条 (limit %d)",
