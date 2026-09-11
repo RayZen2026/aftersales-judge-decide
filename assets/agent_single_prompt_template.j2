@@ -74,12 +74,14 @@
   - m4-m1日均售后 ≥ 2单（绝对阈值，排除偶发）
 
 ### 商家品质追溯
+{% set _cat_rate = dimension_data.product['近7日品类售后赔付率'] | default(0) | float %}
+{% set _cat_rate_safe = _cat_rate if _cat_rate > 0 else 0.01 %}
 ```json
 {
   "近7日商家品类售后赔付率": {{ dimension_data.product['近7日商家品类售后赔付率'] | default(0) }},
   "近7日品类售后赔付率": {{ dimension_data.product['近7日品类售后赔付率'] | default(0) }},
-  "商家偏离倍数": {{ ((dimension_data.product['近7日商家品类售后赔付率'] | default(0) | float) / (dimension_data.product['近7日品类售后赔付率'] | default(0.01) | float)) | round(2) }},
-  "商品偏离倍数": {{ ((dimension_data.product['近7日商品售后赔付率'] | default(0) | float) / (dimension_data.product['近7日品类售后赔付率'] | default(0.01) | float)) | round(2) }},
+  "商家偏离倍数": {{ ((dimension_data.product['近7日商家品类售后赔付率'] | default(0) | float) / _cat_rate_safe) | round(2) }},
+  "商品偏离倍数": {{ ((dimension_data.product['近7日商品售后赔付率'] | default(0) | float) / _cat_rate_safe) | round(2) }},
   "前7日商家自然日售后申诉占比": {{ dimension_data.product['前7日商家自然日售后申诉占比'] | default(0) }},
   "前7日商家自然日售后成功占比": {{ dimension_data.product['前7日商家自然日售后成功占比'] | default(0) }},
   "前7日平均商家自然日售后成功占比": {{ dimension_data.product['前7日平均商家自然日售后成功占比'] | default(0) }},
@@ -88,6 +90,8 @@
 ```
 
 ### 门店价值与行为
+{% set _avg_rate = dimension_data.store['14日平均售后赔付率'] | default(0) | float %}
+{% set _avg_rate_safe = _avg_rate if _avg_rate > 0 else 0.01 %}
 ```json
 {
   "门店等级": "{{ dimension_data.store_tier | default('其他') }}",
@@ -97,7 +101,7 @@
   "近7天平台抽佣金额": {{ dimension_data.store['近7天平台抽佣金额'] | default(0) }},
   "14日门店售后赔付率": {{ dimension_data.store['14日售后赔付率'] | default(0) }},
   "14日平均门店售后赔付率": {{ dimension_data.store['14日平均售后赔付率'] | default(0) }},
-  "14日门店偏离倍数": {{ ((dimension_data.store['14日售后赔付率'] | default(0) | float) / (dimension_data.store['14日平均售后赔付率'] | default(0.01) | float)) | round(2) }},
+  "14日门店偏离倍数": {{ ((dimension_data.store['14日售后赔付率'] | default(0) | float) / _avg_rate_safe) | round(2) }},
   "m29到m3升级售后天数": {{ dimension_data.store['m29到m3升级售后天数'] | default(0) }},
   "m29到m3升级售后且4日复购次数占比": {{ dimension_data.store['m29到m3升级售后且4日复购次数占比'] | default(0) }},
   "近30天自然日撤销售后单数量": {{ dimension_data.store['近30天自然日撤销售后单数量'] | default(0) }},
